@@ -19,11 +19,15 @@ public sealed class ScorePagePresentation : EventArgs, IDisposable
     private long _sceneTimestamp;
     private long _paintedTimestamp;
 
-    internal ScorePagePresentation(Score scoreSnapshot, ScorePageComposition composition,
+    internal ScorePagePresentation(Score scoreSnapshot, Score displayScoreSnapshot,
+        ScorePartView? partView, ScoreViewMode viewMode, ScorePageComposition composition,
         PageSpatialIndex spatialIndex, SKPicture picture, int buildThreadId,
         TimeSpan preparationElapsed, long requestedTimestamp)
     {
         ScoreSnapshot = scoreSnapshot;
+        DisplayScoreSnapshot = displayScoreSnapshot;
+        PartView = partView;
+        ViewMode = viewMode;
         Composition = composition;
         SpatialIndex = spatialIndex;
         _picture = picture;
@@ -34,6 +38,15 @@ public sealed class ScorePagePresentation : EventArgs, IDisposable
 
     /// <summary>Gets the score snapshot that produced this page.</summary>
     public Score ScoreSnapshot { get; }
+
+    /// <summary>Gets the projected score snapshot that produced the displayed page.</summary>
+    public Score DisplayScoreSnapshot { get; }
+
+    /// <summary>Gets the linked part used to produce this presentation, if it is a part view.</summary>
+    public ScorePartView? PartView { get; }
+
+    /// <summary>Gets the view mode used to produce this presentation.</summary>
+    public ScoreViewMode ViewMode { get; }
 
     /// <summary>Gets the composed page and its score-system metadata.</summary>
     public ScorePageComposition Composition { get; }
@@ -180,6 +193,11 @@ public sealed class ScoreUpdateCoordinator : IDisposable
     private Score? _pendingScore;
     private ScoreInputCursor _pendingCursor;
     private Score? _lastLayoutScore;
+    private Score? _lastSourceScore;
+    private ScoreViewMode _requestedView;
+    private ScorePartView? _requestedPart;
+    private ScoreViewMode _pendingView;
+    private ScorePartView? _pendingPart;
     private Task? _worker;
     private long _pendingTimestamp;
     private bool _started;
@@ -210,6 +228,38 @@ public sealed class ScoreUpdateCoordinator : IDisposable
 
     /// <summary>Raised when a layout or recording request fails.</summary>
     public event Action<Exception>? ProcessingFailed;
+
+    /// <summary>Changes the view projection and queues a fresh presentation of the current score.</summary>
+    /// <param name="viewMode">The requested page, continuous or part view.</param>
+    /// <param name="partView">The single-instrument part shown when <paramref name="viewMode"/> is Part.</param>
+    public void SetView(ScoreViewMode viewMode, ScorePartView? partView = null)
+    {
+        if (!Enum.IsDefined(viewMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(viewMode));
+        }
+
+        if (viewMode == ScoreViewMode.Part && (partView is null || partView.InstrumentIndices.Length != 1))
+        {
+            throw new ArgumentException("Part view needs a part with exactly one instrument.", nameof(partView));
+        }
+
+        if (viewMode != ScoreViewMode.Part && partView is not null)
+        {
+            throw new ArgumentException("Only part view accepts a part definition.", nameof(partView));
+        }
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _requestedView = viewMode;
+            _requestedPart = partView;
+            if (_started)
+            {
+                QueueScore(_input.CurrentScore, _input.Cursor);
+            }
+        }
+    }
 
     /// <summary>Begins observing score edits and queues the initial score snapshot.</summary>
     public void Start()
@@ -264,7 +314,7 @@ public sealed class ScoreUpdateCoordinator : IDisposable
         lock (_gate)
         {
             if (_disposed || ReferenceEquals(score, _pendingScore) ||
-                ReferenceEquals(score, _lastLayoutScore))
+                ReferenceEquals(score, _lastSourceScore))
             {
                 return;
             }
@@ -278,6 +328,8 @@ public sealed class ScoreUpdateCoordinator : IDisposable
         _pendingScore = score;
         _pendingCursor = cursor;
         _pendingTimestamp = Stopwatch.GetTimestamp();
+        _pendingView = _requestedView;
+        _pendingPart = _requestedPart;
         if (_workerRunning)
         {
             return;
@@ -294,6 +346,8 @@ public sealed class ScoreUpdateCoordinator : IDisposable
             Score? score;
             ScoreInputCursor cursor;
             long requestedTimestamp;
+            ScoreViewMode viewMode;
+            ScorePartView? partView;
             lock (_gate)
             {
                 if (_disposed)
@@ -305,6 +359,8 @@ public sealed class ScoreUpdateCoordinator : IDisposable
                 score = _pendingScore;
                 cursor = _pendingCursor;
                 requestedTimestamp = _pendingTimestamp;
+                viewMode = _pendingView;
+                partView = _pendingPart;
                 _pendingScore = null;
                 if (score is null)
                 {
@@ -315,7 +371,7 @@ public sealed class ScoreUpdateCoordinator : IDisposable
 
             try
             {
-                ProcessScore(score, cursor, requestedTimestamp, _shutdown.Token);
+                ProcessScore(score, cursor, requestedTimestamp, viewMode, partView, _shutdown.Token);
             }
             catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
             {
@@ -334,12 +390,15 @@ public sealed class ScoreUpdateCoordinator : IDisposable
     }
 
     private void ProcessScore(Score score, ScoreInputCursor cursor, long requestedTimestamp,
-        CancellationToken cancellationToken)
+        ScoreViewMode viewMode, ScorePartView? partView, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Score displayScore = viewMode == ScoreViewMode.Part
+            ? ScorePartProjector.Project(score, partView!)
+            : score;
         int changedMeasure = _lastLayoutScore is null ? -1 :
-            FindSingleChangedMeasure(_lastLayoutScore, score, cancellationToken);
-        double availableWidth = _composer.GetAvailableWidth(score);
+            FindSingleChangedMeasure(_lastLayoutScore, displayScore, cancellationToken);
+        double availableWidth = _composer.GetAvailableWidth(displayScore);
         ScoreLayoutResult layout;
         if (_layouter.Current is not null && changedMeasure >= 0)
         {
@@ -352,18 +411,31 @@ public sealed class ScoreUpdateCoordinator : IDisposable
 
         lock (_gate)
         {
-            _lastLayoutScore = score;
+            _lastLayoutScore = displayScore;
+            _lastSourceScore = score;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
         int displayMeasure = ResolveCursorMeasure(score, cursor.Position);
-        ScorePageComposition composition = _composer.Compose(score, layout, displayMeasure,
-            new EngravingCursor(cursor.StaffIndex, cursor.Position), cancellationToken);
+        int displayStaff = viewMode == ScoreViewMode.Part
+            ? ResolvePartStaffIndex(score, partView!, cursor.StaffIndex)
+            : cursor.StaffIndex;
+        EngravingCursor engravingCursor = new(displayStaff, cursor.Position);
+        ScorePageComposition composition = viewMode switch
+        {
+            ScoreViewMode.Page => _composer.Compose(displayScore, layout, displayMeasure,
+                engravingCursor, cancellationToken),
+            ScoreViewMode.Continuous => _composer.ComposeContinuous(displayScore, layout, displayMeasure,
+                engravingCursor, cancellationToken),
+            ScoreViewMode.Part => _composer.ComposePart(score, partView!, layout, displayMeasure,
+                cursor: engravingCursor, cancellationToken: cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(viewMode)),
+        };
         PageSpatialIndex spatialIndex = new(composition.Page);
         SKPicture picture = _renderer.Record(composition.Page,
             (float)composition.StaffSpacePoints);
-        ScorePagePresentation presentation = new(score, composition, spatialIndex, picture,
-            Environment.CurrentManagedThreadId,
+        ScorePagePresentation presentation = new(score, displayScore, partView, viewMode,
+            composition, spatialIndex, picture, Environment.CurrentManagedThreadId,
             Stopwatch.GetElapsedTime(requestedTimestamp), requestedTimestamp);
 
         try
@@ -381,7 +453,9 @@ public sealed class ScoreUpdateCoordinator : IDisposable
     {
         lock (_gate)
         {
-            if (_disposed || !ReferenceEquals(_input.CurrentScore, presentation.ScoreSnapshot))
+            if (_disposed || !ReferenceEquals(_input.CurrentScore, presentation.ScoreSnapshot) ||
+                presentation.ViewMode != _requestedView ||
+                !ReferenceEquals(presentation.PartView, _requestedPart))
             {
                 presentation.Dispose();
                 return;
@@ -474,6 +548,23 @@ public sealed class ScoreUpdateCoordinator : IDisposable
         }
 
         return score.Measures.Length - 1;
+    }
+
+    private static int ResolvePartStaffIndex(Score score, ScorePartView part, int sourceStaffIndex)
+    {
+        int staffOffset = 0;
+        for (int instrumentIndex = 0; instrumentIndex < score.Instruments.Length; instrumentIndex++)
+        {
+            Instrument instrument = score.Instruments[instrumentIndex];
+            if (instrumentIndex == part.InstrumentIndices[0])
+            {
+                return Math.Clamp(sourceStaffIndex - staffOffset, 0, instrument.Staves.Length - 1);
+            }
+
+            staffOffset += instrument.Staves.Length;
+        }
+
+        throw new ArgumentException("The part refers to a missing instrument.", nameof(part));
     }
 
     private async Task DisposeAfterWorkerAsync(Task worker)

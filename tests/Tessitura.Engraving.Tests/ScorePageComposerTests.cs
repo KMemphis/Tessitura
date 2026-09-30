@@ -106,6 +106,49 @@ public sealed class ScorePageComposerTests
         Assert.True(composer.GetAvailableWidth(score) > 100);
     }
 
+    [Fact]
+    public void ContinuousCompositionKeepsEverySystemOnOneTallPage()
+    {
+        SmuflMetadata metadata = LoadMetadata();
+        Style style = Style.CreateDefault(metadata);
+        ScorePageComposer composer = new(metadata, style);
+        const int measureCount = 12;
+        ImmutableArray<Measure>.Builder measures = ImmutableArray.CreateBuilder<Measure>(measureCount);
+        ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content =
+            ImmutableDictionary.CreateBuilder<StaffMeasureKey, StaffMeasure>();
+        for (int measureIndex = 0; measureIndex < measureCount; measureIndex++)
+        {
+            measures.Add(new Measure(measureIndex + 1, new TimeSignature(4, 4)));
+            Rest rest = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+                new Duration(NoteValue.Whole, 0));
+            content.Add(new StaffMeasureKey(0, measureIndex),
+                new StaffMeasure([new Voice(1, [rest])]));
+        }
+
+        Score score = new(new ScoreMetadata("Galley", ""),
+            [new Instrument("Flute", [new Staff("Flute")])], measures.ToImmutable(),
+            content.ToImmutable());
+        IncrementalScoreLayouter layouter = new(metadata);
+        ScoreLayoutResult measured = layouter.Layout(score, style, composer.GetAvailableWidth(score));
+        ImmutableArray<SystemLine>.Builder systems = ImmutableArray.CreateBuilder<SystemLine>(measureCount);
+        for (int measureIndex = 0; measureIndex < measureCount; measureIndex++)
+        {
+            double width = measured.MeasureWidths[measureIndex].IdealWidth;
+            systems.Add(new SystemLine(new SystemLineMeasureRange(measureIndex, 1), width, width,
+                [width], measureIndex == measureCount - 1));
+        }
+
+        ScoreLayoutResult layout = measured with { Systems = systems.MoveToImmutable() };
+
+        ScorePageComposition composition = composer.ComposeContinuous(score, layout, measureIndex: 11);
+
+        Assert.Equal(1, composition.Page.Number);
+        Assert.Equal(layout.Systems.Length - 1, composition.SystemIndex);
+        Assert.True(composition.Page.Height * composition.StaffSpacePoints > 842);
+        Assert.True(composition.Page.Primitives.OfType<DisplayLine>()
+            .Count(primitive => primitive.ElementId.Value == Guid.Empty) >= layout.Systems.Length * 5);
+    }
+
     private static Score CreateScore(EventId eventId, EventId restId)
     {
         Measure measure = new(1, new TimeSignature(4, 4));

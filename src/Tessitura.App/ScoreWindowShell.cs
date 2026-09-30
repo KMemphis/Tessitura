@@ -19,6 +19,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private readonly TextBlock _statusText;
     private readonly TextBlock _inspectorText;
     private readonly TextBlock _inspectorDetails;
+    private readonly ImmutableArray<ScorePartView> _availableParts;
     private readonly List<(Button Button, bool RequiresNote)> _inspectorButtons = [];
     private readonly List<Control> _themedControls = [];
     private readonly List<Border> _popupSurfaces = [];
@@ -34,6 +35,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     {
         Canvas = canvas ?? throw new ArgumentNullException(nameof(canvas));
         _input = input ?? throw new ArgumentNullException(nameof(input));
+        _availableParts = GetAvailableParts(input.CurrentScore);
         _layout = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
@@ -97,6 +99,15 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     /// <summary>Gets the current view selector.</summary>
     public Button ViewSelectorButton { get; private set; } = null!;
 
+    /// <summary>Gets the currently selected score view.</summary>
+    public ScoreViewMode CurrentView { get; private set; } = ScoreViewMode.Page;
+
+    /// <summary>Gets the selected linked part when the editor is in part view.</summary>
+    public ScorePartView? CurrentPart { get; private set; }
+
+    /// <summary>Raised after the user changes the score view.</summary>
+    public event Action<ScoreViewMode, ScorePartView?>? ViewChanged;
+
     /// <summary>Gets whether the left palette panel is expanded.</summary>
     public bool IsLeftPanelOpen => LeftPanel.IsVisible;
 
@@ -123,7 +134,9 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         new("text.tempo", "Escribir tempo", "Shift+T", () => _textPopover?.Open(TextEntryKind.Tempo)),
         new("text.text", "Escribir texto o cifrado", "Shift+X", () => _textPopover?.Open(TextEntryKind.Text)),
         new("text.lyric", "Escribir letra", "Shift+L", () => _textPopover?.Open(TextEntryKind.Lyric)),
-        new("view.page", "Vista de página", "Ctrl+Shift+1", () => Canvas.Focus()),
+        new("view.page", "Vista de página", "Ctrl+Shift+1", SelectPageView),
+        new("view.continuous", "Vista continua", "Ctrl+Shift+3", SelectContinuousView),
+        new("view.part", "Vista de parte", "Ctrl+Shift+4", SelectFirstPartView),
         new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",
             () => TogglePopup(_viewSelectorPopup)),
@@ -154,6 +167,14 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         new("inspector.tie.toggle", "Alternar ligadura de unión", "Alt+0",
             () => _input.ToggleSelectedTie()),
         ]);
+
+        for (int partIndex = 0; partIndex < _availableParts.Length; partIndex++)
+        {
+            ScorePartView part = _availableParts[partIndex];
+            actions.Add(new ActionDefinition($"view.part.select.{partIndex}",
+                $"Vista de parte: {part.Name}", GetPartShortcut(partIndex),
+                () => SelectPartView(part)));
+        }
 
         int shortcutIndex = 0;
         (Clef Clef, string Label, string Id)[] clefs =
@@ -300,8 +321,9 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         _viewSelectorPopup = CreatePopup(ViewSelectorButton,
         [
             CreateButton("Página", "Vista de página", "view.page"),
-            CreateButton("Continua", "Disponible en una fase posterior", null, false),
-            CreateButton("Parte", "Disponible en una fase posterior", null, false),
+            CreateButton("Continua", "Vista continua de galera", "view.continuous"),
+            CreateButton("Parte", "Vista de la primera parte", "view.part", _availableParts.Length > 0),
+            .. CreatePartViewButtons(),
         ]);
         row.Children.Add(_viewSelectorPopup);
         row.Children.Add(CreateButton("◀", "Reproducción anterior", null, false));
@@ -567,6 +589,87 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             Canvas.Focus();
         }
     }
+
+    private Button[] CreatePartViewButtons()
+    {
+        Button[] buttons = new Button[_availableParts.Length];
+        for (int partIndex = 0; partIndex < _availableParts.Length; partIndex++)
+        {
+            ScorePartView part = _availableParts[partIndex];
+            buttons[partIndex] = CreateButton(part.Name, $"Vista de parte: {part.Name}",
+                $"view.part.select.{partIndex}");
+        }
+
+        return buttons;
+    }
+
+    private void SelectPageView() => SetView(ScoreViewMode.Page, null);
+
+    private void SelectContinuousView() => SetView(ScoreViewMode.Continuous, null);
+
+    private void SelectFirstPartView()
+    {
+        if (!_availableParts.IsDefaultOrEmpty)
+        {
+            SelectPartView(_availableParts[0]);
+        }
+    }
+
+    private void SelectPartView(ScorePartView part) => SetView(ScoreViewMode.Part, part);
+
+    private void SetView(ScoreViewMode view, ScorePartView? part)
+    {
+        CurrentView = view;
+        CurrentPart = part;
+        ViewSelectorButton.Content = view switch
+        {
+            ScoreViewMode.Page => "Página ▾",
+            ScoreViewMode.Continuous => "Continua ▾",
+            ScoreViewMode.Part => $"{part?.Name ?? "Parte"} ▾",
+            _ => throw new ArgumentOutOfRangeException(nameof(view)),
+        };
+        ViewChanged?.Invoke(view, part);
+        Canvas.Focus();
+    }
+
+    private static ImmutableArray<ScorePartView> GetAvailableParts(Score score)
+    {
+        ImmutableArray<ScorePartView> savedParts = score.PartList;
+        if (!savedParts.IsDefaultOrEmpty)
+        {
+            ImmutableArray<ScorePartView>.Builder validParts = ImmutableArray.CreateBuilder<ScorePartView>();
+            foreach (ScorePartView part in savedParts)
+            {
+                if (part.InstrumentIndices.Length == 1 &&
+                    part.InstrumentIndices[0] < score.Instruments.Length)
+                {
+                    validParts.Add(part);
+                }
+            }
+
+            if (validParts.Count > 0)
+            {
+                return validParts.ToImmutable();
+            }
+        }
+
+        ImmutableArray<ScorePartView>.Builder parts = ImmutableArray.CreateBuilder<ScorePartView>(
+            score.Instruments.Length);
+        for (int index = 0; index < score.Instruments.Length; index++)
+        {
+            parts.Add(new ScorePartView(score.Instruments[index].Name, [index]));
+        }
+
+        return parts.MoveToImmutable();
+    }
+
+    private static string GetPartShortcut(int partIndex) => partIndex switch
+    {
+        < 12 => $"Ctrl+Alt+Shift+F{partIndex + 13}",
+        < 22 => $"Ctrl+Alt+Shift+{partIndex - 12}",
+        < 48 => $"Ctrl+Alt+Shift+{(char)('A' + partIndex - 22)}",
+        _ => throw new InvalidOperationException("The part selector supports at most 48 keyboard actions."),
+    };
 
     private void ToggleTheme()
     {

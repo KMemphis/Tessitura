@@ -45,6 +45,7 @@ internal sealed class EditorSession : IDisposable
             Path.Combine(assetsPath, "Bravura.otf"),
             postToUi: action => Dispatcher.UIThread.Post(action));
         _updates.PresentationReady += (_, presentation) => _canvas.AttachPresentation(presentation);
+        Shell.ViewChanged += _updates.SetView;
         List<ActionDefinition> definitions =
         [
             new("view.zoom-in", "Aumentar zoom", "Ctrl+Plus", () => _canvas.ZoomBy(1.1)),

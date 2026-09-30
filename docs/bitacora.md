@@ -498,3 +498,11 @@
 - Pruebas: clarinete en Si♭ de Re4 escrito a Do4 de concierto y Do5 a Si♭4 audible; armadura de Re mayor escrita frente a Do mayor de concierto; composición geométrica de ambas vistas; corpus MusicXML 72a y validación de esquema; ida y vuelta `.tess` y compatibilidad del formato anterior.
 - `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 381 pruebas (88 Core, 49 Playback, 49 IO y 195 Engraving), 0 fallos y 0 omitidas.
 - Deuda: MusicXML permite cambiar la transposición durante la obra; por ahora se conserva el primer intervalo y se informa de los cambios posteriores. El selector de vistas se conectará en F4.13. Siguiente tarea: F4.13, vistas continua y de parte.
+
+## 2026-09-30 · F4.13 Vistas continua y de parte
+
+- El selector de vista y sus acciones registradas ahora permiten página, galera continua y cada parte de un solo instrumento. La galera compone todos los sistemas en una hoja vertical sin saltos de página; el lienzo adapta la hoja blanca y el ajuste al ancho, y el índice espacial permite seleccionar eventos en toda la partitura. La vista de parte se proyecta desde el score maestro vigente, reusa el maquetador y conserva los `EventId`; no se crea una segunda copia editable.
+- La selección permanece en `ScoreInputController` durante los cambios de vista. `ScorePagePresentation` expone por separado el score maestro y la proyección visual, y descarta una presentación obsoleta si el usuario cambia de vista mientras se prepara.
+- Se añadieron cuatro pruebas: selección al alternar las tres vistas, composición de todos los sistemas en la galera, proyección de parte con identificadores enlazados y fondo de hoja continua de altura completa. `EditorShortcutsTests` confirma que las acciones nuevas no chocan con los atajos existentes. No se modificó el catálogo de imágenes de referencia.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 385 pruebas (88 Core, 49 Playback, 49 IO y 199 Engraving), 0 fallos y 0 omitidas.
+- Siguiente tarea: F4.14, MIDI en tiempo real.

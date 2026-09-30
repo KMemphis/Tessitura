@@ -170,11 +170,19 @@ public sealed class ScoreCanvas : Control
             throw new ArgumentOutOfRangeException(nameof(presentation));
         }
 
+        bool viewChanged = _presentation is null || _presentation.ViewMode != presentation.ViewMode ||
+            !ReferenceEquals(_presentation.PartView, presentation.PartView);
         presentation.MarkPublished();
         _presentation = presentation;
         _pictureBridge.Publish(presentation);
         _pageSpatialIndex = presentation.SpatialIndex;
         _displayPageStaffSpace = presentation.Composition.StaffSpacePoints;
+        if (viewChanged)
+        {
+            _userAdjusted = false;
+            FitPageToBounds();
+        }
+
         _compositionVisual?.SendHandlerMessage(new PictureChanged(Zoom, PanOffset));
         InvalidateVisual();
     }
@@ -230,9 +238,12 @@ public sealed class ScoreCanvas : Control
     public override void Render(DrawingContext context)
     {
         _presentation?.MarkSceneBuilt();
+        double pageHeight = _presentation is null
+            ? 842
+            : _presentation.Composition.Page.Height * _presentation.Composition.StaffSpacePoints;
         context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _workspaceColor,
             _compositionVisual is null ? _musicPreview : null,
-            _compositionVisual is null ? _presentation : null));
+            _compositionVisual is null ? _presentation : null, pageHeight));
         if (_pageSpatialIndex is not null && _scoreInputController is { CurrentSelection.Items.IsDefaultOrEmpty: false } selected)
         {
             context.Custom(new SelectionDrawOperation(
@@ -356,13 +367,25 @@ public sealed class ScoreCanvas : Control
             return;
         }
 
-        Zoom = Math.Clamp(
-            Math.Min((Bounds.Width - 80) / 595, (Bounds.Height - 80) / 842),
-            0.25,
-            1);
-        PanOffset = new Vector(
-            (Bounds.Width - 595 * Zoom) / 2 - 80 * Zoom,
-            (Bounds.Height - 842 * Zoom) / 2 - 40 * Zoom);
+        double pageHeight = _presentation is null
+            ? 842
+            : _presentation.Composition.Page.Height * _presentation.Composition.StaffSpacePoints;
+        if (pageHeight > 842.5)
+        {
+            Zoom = Math.Clamp((Bounds.Width - 80) / 595, 0.25, 1);
+            PanOffset = new Vector((Bounds.Width - 595 * Zoom) / 2 - 80 * Zoom,
+                20 - 40 * Zoom);
+        }
+        else
+        {
+            Zoom = Math.Clamp(
+                Math.Min((Bounds.Width - 80) / 595, (Bounds.Height - 80) / pageHeight),
+                0.25,
+                1);
+            PanOffset = new Vector(
+                (Bounds.Width - 595 * Zoom) / 2 - 80 * Zoom,
+                (Bounds.Height - pageHeight * Zoom) / 2 - 40 * Zoom);
+        }
         UpdateCompositionVisual();
         InvalidateVisual();
     }
@@ -434,7 +457,8 @@ public sealed class ScoreCanvas : Control
         Vector panOffset,
         SKColor workspaceColor,
         MusicPreviewRenderer? musicPreview,
-        ScorePagePresentation? presentation) : ICustomDrawOperation
+        ScorePagePresentation? presentation,
+        double pageHeight) : ICustomDrawOperation
     {
         private readonly IDisposable? _pictureReference = presentation?.RetainPicture();
         public Rect Bounds { get; } = bounds;
@@ -450,7 +474,7 @@ public sealed class ScoreCanvas : Control
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
             PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X,
-                panOffset.Y, presentation is null ? musicPreview : null, workspaceColor);
+                panOffset.Y, presentation is null ? musicPreview : null, workspaceColor, pageHeight);
             if (presentation is not null)
             {
                 canvas.Save();

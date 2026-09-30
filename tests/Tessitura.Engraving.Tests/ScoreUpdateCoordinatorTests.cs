@@ -106,6 +106,30 @@ public sealed class ScoreUpdateCoordinatorTests
         Assert.Same(input.CurrentScore, result.ScoreSnapshot);
     }
 
+    [Fact]
+    public async Task PartViewProjectsTheSelectedInstrumentWithoutReplacingTheMasterScore()
+    {
+        Score score = CreatePartScore(out EventId partEvent);
+        ScorePartView part = Assert.Single(score.PartList, candidate => candidate.Name == "Oboe");
+        ScoreInputController input = new(score);
+        using ScoreUpdateCoordinator coordinator = new(input, LoadMetadata(), FindAsset("Bravura.otf"),
+            postToUi: static action => action());
+        TaskCompletionSource<ScorePagePresentation> ready =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.PresentationReady += (_, presentation) => ready.TrySetResult(presentation);
+
+        coordinator.SetView(ScoreViewMode.Part, part);
+        coordinator.Start();
+        using ScorePagePresentation presentation = await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Same(score, presentation.ScoreSnapshot);
+        Assert.Single(presentation.DisplayScoreSnapshot.Instruments);
+        Assert.Equal("Oboe", presentation.PartView?.Name);
+        Assert.Contains(presentation.DisplayScoreSnapshot.Content.Values.SelectMany(staffMeasure =>
+            staffMeasure.Voices).SelectMany(voice => voice.Events), musicEvent => musicEvent.Id == partEvent);
+        Assert.True(input.ContainsEvent(partEvent));
+    }
+
     private static Score CreateScore()
     {
         EventId eventId = new(Guid.NewGuid());
@@ -115,6 +139,24 @@ public sealed class ScoreUpdateCoordinatorTests
             [new Measure(1, new TimeSignature(4, 4))],
             ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
                 new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [rest])])));
+    }
+
+    private static Score CreatePartScore(out EventId partEvent)
+    {
+        EventId fluteEvent = new(Guid.NewGuid());
+        partEvent = new EventId(Guid.NewGuid());
+        Duration whole = new(NoteValue.Whole, 0);
+        Chord flute = new(fluteEvent, Fraction.Zero, whole,
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Chord oboe = new(partEvent, Fraction.Zero, whole,
+            [new Note(new Pitch(Step.G, 0, 4))], StemDirection.Auto);
+        return new Score(new ScoreMetadata("Parts", ""),
+            [new Instrument("Flute", [new Staff("Flute")]), new Instrument("Oboe", [new Staff("Oboe")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [flute])]))
+                .Add(new StaffMeasureKey(1, 0), new StaffMeasure([new Voice(1, [oboe])])),
+            Parts: [new ScorePartView("Flute", [0]), new ScorePartView("Oboe", [1])]);
     }
 
     private static string FindAsset(string name)

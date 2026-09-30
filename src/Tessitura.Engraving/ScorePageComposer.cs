@@ -127,6 +127,24 @@ public sealed class ScorePageComposer
             ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
     }
 
+    /// <summary>Composes every system into one tall page without page breaks.</summary>
+    /// <param name="score">The immutable score snapshot.</param>
+    /// <param name="layout">The measured and system-broken score.</param>
+    /// <param name="measureIndex">The measure whose system should receive the cursor.</param>
+    /// <param name="cursor">The optional musical cursor to place in the continuous score.</param>
+    /// <param name="cancellationToken">Cancels composition without returning partial primitives.</param>
+    /// <param name="pitchDisplayMode">Whether to display the score in written or concert pitch.</param>
+    /// <returns>A continuous display list containing every score system.</returns>
+    public ScorePageComposition ComposeContinuous(Score score, ScoreLayoutResult layout, int measureIndex,
+        EngravingCursor? cursor = null, CancellationToken cancellationToken = default,
+        PitchDisplayMode pitchDisplayMode = PitchDisplayMode.Written)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        Score displayScore = ScorePitchView.Project(score, pitchDisplayMode);
+        return ComposeCore(displayScore, layout, measureIndex, cursor, cancellationToken,
+            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode, continuous: true);
+    }
+
     /// <summary>Composes a linked instrument part and groups its consecutive full-measure rests.</summary>
     /// <param name="sourceScore">The latest master score snapshot.</param>
     /// <param name="part">The linked part view to compose.</param>
@@ -155,7 +173,8 @@ public sealed class ScorePageComposer
 
     private ScorePageComposition ComposeCore(Score score, ScoreLayoutResult layout, int measureIndex,
         EngravingCursor? cursor, CancellationToken cancellationToken,
-        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode)
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode,
+        bool continuous = false)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(layout);
@@ -169,7 +188,9 @@ public sealed class ScorePageComposer
         SystemLine system = layout.Systems[systemIndex];
         double staffSpace = GetStaffSpacePoints(score);
         double pageWidth = PageWidthPoints / staffSpace;
-        double pageHeight = PageHeightPoints / staffSpace;
+        double pageHeight = continuous
+            ? (PageHeightPoints + 2 * VerticalMarginPoints) * Math.Max(1, layout.Systems.Length) / staffSpace
+            : PageHeightPoints / staffSpace;
         double leftMargin = HorizontalMarginPoints / staffSpace;
         double topMargin = VerticalMarginPoints / staffSpace;
         Dictionary<EventId, List<Attachment>> attachmentIndex = BuildAttachmentIndex(score);

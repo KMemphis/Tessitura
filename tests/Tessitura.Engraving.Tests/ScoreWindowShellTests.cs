@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using SkiaSharp;
 using Tessitura.App;
 using Tessitura.Core;
+using Tessitura.Editing;
 using Tessitura.Rendering;
 using Xunit;
 
@@ -54,6 +55,41 @@ public sealed class ScoreWindowShellTests
             SKColor initialColor = canvas.WorkspaceColor;
             Assert.True(registry.TryExecute("view.toggle-theme"));
             Assert.NotEqual(initialColor, canvas.WorkspaceColor);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
+    public void SwitchingScoreViewsKeepsTheCurrentSelection()
+    {
+        ScoreInputController input = CreatePartInput(out EventId selectedEvent);
+        input.SelectEvent(selectedEvent);
+        Selection selection = input.CurrentSelection;
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-view-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+
+            Assert.True(actions.TryExecute("view.continuous"));
+            Assert.Equal(ScoreViewMode.Continuous, shell.CurrentView);
+            Assert.Equal(selection, input.CurrentSelection);
+            Assert.Equal("Continua ▾", shell.ViewSelectorButton.Content);
+
+            Assert.True(actions.TryExecute("view.part.select.0"));
+            Assert.Equal(ScoreViewMode.Part, shell.CurrentView);
+            Assert.Equal("Flute", shell.CurrentPart?.Name);
+            Assert.Equal(selection, input.CurrentSelection);
+            Assert.Equal("Flute ▾", shell.ViewSelectorButton.Content);
+
+            Assert.True(actions.TryExecute("view.page"));
+            Assert.Equal(ScoreViewMode.Page, shell.CurrentView);
+            Assert.Equal(selection, input.CurrentSelection);
         }
         finally
         {
@@ -124,6 +160,23 @@ public sealed class ScoreWindowShellTests
             [new Measure(1, new TimeSignature(4, 4))],
             ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
                 new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [rest])])));
+        return new ScoreInputController(score);
+    }
+
+    private static ScoreInputController CreatePartInput(out EventId selectedEvent)
+    {
+        selectedEvent = new EventId(Guid.NewGuid());
+        Chord chord = new(selectedEvent, Fraction.Zero, new Duration(NoteValue.Whole, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Rest rest = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+            new Duration(NoteValue.Whole, 0));
+        Score score = new(new ScoreMetadata("Test", ""),
+            [new Instrument("Flute", [new Staff("Flute")]), new Instrument("Oboe", [new Staff("Oboe")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [chord])]))
+                .Add(new StaffMeasureKey(1, 0), new StaffMeasure([new Voice(1, [rest])])),
+            Parts: [new ScorePartView("Flute", [0]), new ScorePartView("Oboe", [1])]);
         return new ScoreInputController(score);
     }
 }

@@ -95,7 +95,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F4.10 · Letras y cifrado.** Varias estrofas, guiones y extensores; cifrado de acordes. *Hecho cuando:* imágenes de referencia de un himno con tres estrofas.
 - [x] **F4.11 · Partes vinculadas.** Extracción de partes como vistas con maquetación propia y compases de espera agrupados. *Hecho cuando:* editar una nota en la partitura la cambia en la parte.
 - [x] **F4.12 · Transposición.** Partitura en concierto o transpuesta e instrumentos transpositores. *Hecho cuando:* un clarinete en Si bemol muestra la altura escrita correcta en ambas vistas.
-- [ ] **F4.13 · Vistas continua y de parte.** Vista de galera sin saltos de página y selector de vista. *Hecho cuando:* cambiar de vista conserva la selección.
+- [x] **F4.13 · Vistas continua y de parte.** Vista de galera sin saltos de página y selector de vista. *Hecho cuando:* cambiar de vista conserva la selección.
 - [ ] **F4.14 · MIDI en tiempo real.** Grabación con metrónomo y cuantización posterior. *Hecho cuando:* una melodía tocada a tempo queda cuantizada a corcheas sin errores.
 - [ ] **F4.15 · Rendimiento orquestal.** Perfilado y optimización con la partitura de referencia completa en notación avanzada. *Hecho cuando:* se cumplen todos los presupuestos de la definición.
 
