@@ -83,7 +83,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 
 ## F4 · Notación avanzada y partes (semanas 35–46)
 
-- [ ] **F4.1 · Varias voces.** Hasta 4 voces por pentagrama con plicas por voz y desplazamiento de cabezas en colisión. *Hecho cuando:* imágenes de referencia de dos y cuatro voces sin solapes.
+- [x] **F4.1 · Varias voces.** Hasta 4 voces por pentagrama con plicas por voz y desplazamiento de cabezas en colisión. *Hecho cuando:* imágenes de referencia de dos y cuatro voces sin solapes.
 - [ ] **F4.2 · Grupos irregulares.** Tresillos, cinquillos y anidados, con corchete o número. *Hecho cuando:* la duración de cada grupo cuadra exactamente con `Fraction`.
 - [ ] **F4.3 · Acordes.** Cabezas en segundas, apilado de alteraciones en columnas y puntillos en acordes. *Hecho cuando:* imágenes de referencia de clusters y acordes con cinco alteraciones.
 - [ ] **F4.4 · Articulaciones y ornamentos.** Colocación según plica y orden de apilado de Behind Bars. *Hecho cuando:* imágenes de referencia aprobadas.

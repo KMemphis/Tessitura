@@ -405,3 +405,9 @@
 
 - Ida y vuelta MusicXML: 95,5 % de los archivos del corpus público dentro del alcance sin pérdidas (objetivo de la puerta: 90 %). La partitura de referencia suena con el cursor sincronizado en pruebas con salida simulada (desfase < 1 fotograma) y 6 s reales en este Mac con miniaudio; sin asignaciones en el hilo de audio.
 - Pendiente que exige tu intervención, ya listado en F3.6 y F3.9: SoundFont incluido, aprobación del alcance de F3, archivos reales de Dorico/Sibelius/MuseScore y comprobaciones físicas en Windows y Linux (audio, teclado MIDI, adaptador ALSA). Por indicación del propietario se continúa con F4.
+
+## 2026-09-30 · F4.1 Varias voces
+
+- `ScorePageComposer` dibuja hasta cuatro voces por pentagrama: las voces impares llevan plicas hacia arriba y las pares hacia abajo (`StaffElementPlacer.PlaceNote` admite ahora una dirección impuesta), los silencios de cada voz se desplazan en vertical para no solaparse (voz 1 arriba, 2 abajo, 3 y 4 más lejos) y la cabeza de una voz de número mayor se desplaza a la derecha un ancho de cabeza cuando la de una voz inferior está a una segunda o menos en el mismo instante; un unísono de figuras iguales comparte posición. Un pentagrama con una sola voz se dibuja exactamente igual que antes: las imágenes de referencia existentes siguen pasando.
+- Cuatro pruebas de geometría: plicas opuestas, cabezas que chocan sin solaparse, unísono compartido, silencios de cuatro voces sin solaparse y direcciones alternas. `dotnet test` pasó 263 pruebas sin fallos ni omisiones.
+- **Pendiente de tu aprobación:** las imágenes de referencia de dos y cuatro voces que pide el «Hecho cuando». La geometría está comprobada por pruebas, pero no he añadido imágenes al catálogo aprobado. Las plicas de voces con barras y los silencios entre plicas se refinarán en F4.8.
