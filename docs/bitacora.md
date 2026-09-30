@@ -91,4 +91,5 @@
 
 - Se añadió DryWetMIDI 8.0.3 para una prueba de enumeración y recepción. En este Mac no hay puertos físicos; un puerto virtual de CoreMIDI recibió Do4 en canal 2 con velocidad 100.
 - La documentación oficial de DryWetMIDI excluye Linux de su API de dispositivos. `docs/decisiones/midi.md` propone un adaptador ALSA detrás de `IMidiPort`, sujeto a aprobación como nueva dependencia de sistema.
-- Queda pendiente la comprobación de CI en Windows, macOS y Ubuntu y la decisión sobre pruebas físicas diferidas.
+- La primera CI enumeró correctamente Windows (sin entradas, con salida Microsoft GS Wavetable Synth) y recibió la nota de loopback en macOS; Ubuntu confirmó ausencia de backend nativo DryWetMIDI. Se corrigió el diagnóstico para dejarlo explícito sin fallar la matriz por esa incompatibilidad prevista.
+- Quedan pendientes la nueva CI y la decisión sobre el adaptador ALSA y las pruebas físicas diferidas.

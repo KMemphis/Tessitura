@@ -86,6 +86,17 @@ internal static class MidiProbe
             }));
             return 0;
         }
+        catch (DllNotFoundException exception) when (mode == "list" && OperatingSystem.IsLinux())
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                Platform = Environment.OSVersion.ToString(),
+                Supported = false,
+                Error = exception.GetType().Name,
+                Reason = "DryWetMIDI does not provide a Linux device backend",
+            }));
+            return 0;
+        }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"MIDI probe failed: {exception.GetType().Name}: {exception.Message}");
