@@ -255,7 +255,7 @@ internal static class RhythmicScoreNormalizer
         return voicesByStaff;
     }
 
-    private static ImmutableArray<MusicEvent> CreateFullMeasureRests(TimeSignature timeSignature)
+    internal static ImmutableArray<MusicEvent> CreateFullMeasureRests(TimeSignature timeSignature)
     {
         ImmutableArray<MusicEvent>.Builder rests = ImmutableArray.CreateBuilder<MusicEvent>();
         Fraction onset = Fraction.Zero;
