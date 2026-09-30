@@ -125,10 +125,10 @@ public static class MidiExporter
                             open[voice.Number] = tied;
                         }
 
-                        foreach (MusicEvent musicEvent in voice.Events)
+                        foreach ((MusicEvent musicEvent, Fraction leafOnset, Fraction leafLength) in voice.Events.Flatten())
                         {
-                            long start = measureStart + ToTicks(musicEvent.Onset, ticksPerWhole);
-                            long length = ToTicks(musicEvent.Duration.Length, ticksPerWhole);
+                            long start = measureStart + ToTicks(leafOnset, ticksPerWhole);
+                            long length = ToTicks(leafLength, ticksPerWhole);
                             Dictionary<int, MidiNote> next = [];
                             if (musicEvent is Chord chord)
                             {

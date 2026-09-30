@@ -96,7 +96,7 @@ public sealed record PasteCommand(ClipboardFragment Fragment, Fraction Position)
                 foreach (MusicEvent existing in staffMeasure!.Voices[voiceIndex].Events)
                 {
                     Fraction onset = measureStart + existing.Onset;
-                    Fraction existingEnd = onset + existing.Duration.Length;
+                    Fraction existingEnd = onset + existing.Length;
                     bool overlaps = onset < end && existingEnd > Position;
                     if (!overlaps)
                     {

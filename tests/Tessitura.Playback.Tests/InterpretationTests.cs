@@ -194,3 +194,25 @@ public sealed class InterpretationTests
             ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [.. events])])));
     }
 }
+
+public sealed class TupletInterpretationTests
+{
+    [Fact]
+    public void TripletMembersSoundAThirdOfAQuarterEach()
+    {
+        Duration eighth = new(NoteValue.Eighth, 0);
+        Chord[] notes = [.. Enumerable.Range(0, 3).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 12), eighth,
+            [new Note(new Pitch(Step.C, 0, 4 + i))], StemDirection.Auto))];
+        TupletGroup group = new(new EventId(Guid.NewGuid()), Fraction.Zero, eighth, 3, 2, [.. notes]);
+        Score score = new(new ScoreMetadata("T", ""), [new Instrument("I", [new Staff("S")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1, [group, new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1))])])));
+
+        Interpretation result = Interpreter.Interpret(score);
+
+        Assert.Equal([Fraction.Zero, new Fraction(1, 12), new Fraction(1, 6)], result.Notes.Select(n => n.Start));
+        Assert.All(result.Notes, n => Assert.Equal(new Fraction(1, 12), n.NotatedLength));
+        Assert.Equal(0.5, result.Tempo.SecondsAt(group.Length), precision: 12);
+    }
+}

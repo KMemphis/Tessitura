@@ -11,7 +11,7 @@ internal sealed record NoteDto(int Step, int Alter, int Octave, bool Tied);
 
 internal sealed record EventDto(
     string Kind, Guid Id, long OnsetNum, long OnsetDen, int Value, int Dots, int Stem,
-    List<NoteDto> Notes);
+    List<NoteDto> Notes, int Actual = 0, int Normal = 0, List<EventDto>? Children = null);
 
 internal sealed record VoiceDto(int Number, List<EventDto> Events);
 

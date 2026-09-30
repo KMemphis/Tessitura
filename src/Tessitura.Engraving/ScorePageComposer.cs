@@ -275,9 +275,11 @@ public sealed class ScorePageComposer
         CancellationToken cancellationToken)
     {
         AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
-            out (int Voice, int Event, int Note)[] order);
+            out (int Voice, EventId Event, int Note)[] order);
         bool manyVoices = staffMeasure.Voices.Length > 1;
         double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
+        double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
+            score.Measures[measureIndex].TimeSignature.Length.Den;
         foreach (Voice voice in staffMeasure.Voices)
         {
             // Behind Bars, Multiple Voices: odd voices take up-stems, even voices down-stems.
@@ -286,47 +288,108 @@ public sealed class ScorePageComposer
                 : null;
             double restShift = !manyVoices ? 0 : voice.Number switch { 1 => -2, 2 => 2, 3 => -4, _ => 4 };
             cancellationToken.ThrowIfCancellationRequested();
-            for (int eventIndex = 0; eventIndex < voice.Events.Length; eventIndex++)
+            foreach (MusicEvent topLevel in voice.Events)
             {
-                MusicEvent musicEvent = voice.Events[eventIndex];
                 cancellationToken.ThrowIfCancellationRequested();
-                double onset = (double)musicEvent.Onset.Num / musicEvent.Onset.Den;
-                double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
-                    score.Measures[measureIndex].TimeSignature.Length.Den;
-                double x = measureStartX + measureWidth * onset / barLength;
-                if (musicEvent is Rest rest)
+                if (topLevel is TupletGroup group)
                 {
-                    primitives.AddRange(placer.PlaceRest(rest.Id, rest.Duration, x, staffTop, restShift));
+                    AddTuplet(primitives, placer, group, voice, staffMeasure, clef, measureStartX, measureWidth,
+                        staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
+                    continue;
                 }
-                else if (musicEvent is Chord chord)
-                {
-                    for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
-                    {
-                        Note note = chord.Notes[noteIndex];
-                        AccidentalMark accidental = AccidentalMark.None;
-                        for (int i = 0; i < order.Length; i++)
-                        {
-                            if (order[i].Voice == voice.Number && order[i].Event == eventIndex &&
-                                order[i].Note == noteIndex)
-                            {
-                                accidental = marks[i];
-                                break;
-                            }
-                        }
 
-                        double chordOffset = chord.Notes.Length <= 1 ? 0 : noteIndex * 0.75;
-                        if (manyVoices && CollidesWithLowerVoice(staffMeasure, voice, chord, note, clef))
-                        {
-                            chordOffset += headWidth; // Behind Bars, Multiple Voices: displace the clashing head
-                        }
-
-                        primitives.AddRange(placer.PlaceNote(chord.Id, note.Pitch,
-                            chord.Duration, accidental, x + chordOffset, staffTop, clef, voiceStem));
-                    }
-                }
+                AddLeaf(primitives, placer, topLevel, topLevel.Onset, voice, staffMeasure, clef, measureStartX, measureWidth,
+                    staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
             }
         }
     }
+
+    private void AddLeaf(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer, MusicEvent leaf,
+        Fraction position, Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth,
+        double staffTop, double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks,
+        bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift)
+    {
+        double x = measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
+        if (leaf is Rest rest)
+        {
+            primitives.AddRange(placer.PlaceRest(rest.Id, rest.Duration, x, staffTop, restShift));
+            return;
+        }
+
+        Chord chord = (Chord)leaf;
+        for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
+        {
+            Note note = chord.Notes[noteIndex];
+            AccidentalMark accidental = AccidentalMark.None;
+            for (int i = 0; i < order.Length; i++)
+            {
+                if (order[i].Voice == voice.Number && order[i].Event == chord.Id && order[i].Note == noteIndex)
+                {
+                    accidental = marks[i];
+                    break;
+                }
+            }
+
+            double chordOffset = chord.Notes.Length <= 1 ? 0 : noteIndex * 0.75;
+            if (manyVoices && CollidesWithLowerVoice(staffMeasure, voice, chord, note, clef))
+            {
+                chordOffset += headWidth; // Behind Bars, Multiple Voices: displace the clashing head
+            }
+
+            primitives.AddRange(placer.PlaceNote(chord.Id, note.Pitch,
+                chord.Duration, accidental, x + chordOffset, staffTop, clef, voiceStem));
+        }
+    }
+
+    // Draws the members at their sounding onsets, then the bracket and number above the group.
+    // Behind Bars, Tuplets: a bracket with the ratio number spans the group unless the notes are beamed.
+    private void AddTuplet(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer, TupletGroup group,
+        Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth, double staffTop,
+        double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks, bool manyVoices,
+        double headWidth, StemDirection? voiceStem, double restShift)
+    {
+        double left = double.MaxValue;
+        double right = double.MinValue;
+        foreach ((MusicEvent leaf, Fraction onset, _) in new[] { (MusicEvent)group }.Flatten())
+        {
+            AddLeaf(primitives, placer, leaf, onset, voice, staffMeasure, clef, measureStartX, measureWidth, staffTop,
+                barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
+            double x = measureStartX + measureWidth * ((double)onset.Num / onset.Den) / barLength;
+            left = Math.Min(left, x);
+            right = Math.Max(right, x + 1.2);
+        }
+
+        bool below = voiceStem == StemDirection.Down;
+        double y = below ? staffTop + 6 : staffTop - 2;
+        double hook = below ? -0.8 : 0.8;
+        ElementId id = new(group.Id.Value);
+        string number = group.Actual.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        double numberWidth = 0;
+        foreach (char digit in number)
+        {
+            numberWidth += _metadata.GetBoundingBox($"tuplet{digit}").NorthEast.X;
+        }
+
+        double middle = (left + right) / 2;
+        double gapLeft = middle - numberWidth / 2 - 0.4;
+        double gapRight = middle + numberWidth / 2 + 0.4;
+        double thickness = _style.StaffLineThickness * 1.5;
+        primitives.Add(BracketLine(id, left, y, gapLeft, y, thickness));
+        primitives.Add(BracketLine(id, gapRight, y, right, y, thickness));
+        primitives.Add(BracketLine(id, left, y, left, y + hook, thickness));
+        primitives.Add(BracketLine(id, right, y, right, y + hook, thickness));
+        double digitX = middle - numberWidth / 2;
+        foreach (char digit in number)
+        {
+            string name = $"tuplet{digit}";
+            AddGlyph(primitives, id, name, digitX, y + (below ? 0.5 : 0.5));
+            digitX += _metadata.GetBoundingBox(name).NorthEast.X;
+        }
+    }
+
+    private static DisplayLine BracketLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>
+        new(id, new DisplayBox(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1) + thickness, Math.Abs(y2 - y1) + thickness),
+            new DisplayPoint(x1, y1), new DisplayPoint(x2, y2), thickness);
 
     // A head of a higher-numbered voice clashes when a lower voice has a head within a step at the same
     // onset; a unison of equal note values shares one head instead.
@@ -370,78 +433,59 @@ public sealed class ScorePageComposer
     };
 
     private static AccidentalMark[] ResolveAccidentals(Measure measure, int measureIndex,
-        StaffMeasure staffMeasure, out (int Voice, int Event, int Note)[] order)
+        StaffMeasure staffMeasure, out (int Voice, EventId Event, int Note)[] order)
     {
         // Accidentals follow the sounding order of the measure across voices
         // (Behind Bars, Accidentals and Key Signatures > Using accidentals).
+        List<(int Voice, Chord Chord, Fraction Onset, Chord? Previous)> chords = [];
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            Chord? previous = null;
+            foreach ((MusicEvent leaf, Fraction onset, _) in voice.Events.Flatten())
+            {
+                if (leaf is Chord chord)
+                {
+                    chords.Add((voice.Number, chord, onset, previous));
+                    previous = chord;
+                }
+                else
+                {
+                    previous = null;
+                }
+            }
+        }
+
+        chords.Sort((a, b) => a.Onset.CompareTo(b.Onset));
         int count = 0;
-        foreach (Voice voice in staffMeasure.Voices)
+        foreach ((int _, Chord chord, Fraction _, Chord? _) in chords)
         {
-            foreach (MusicEvent musicEvent in voice.Events)
-            {
-                if (musicEvent is Chord chord)
-                {
-                    count += chord.Notes.Length;
-                }
-            }
+            count += chord.Notes.Length;
         }
 
-        order = new (int, int, int)[count];
-        Fraction[] onsets = new Fraction[count];
-        int filled = 0;
-        foreach (Voice voice in staffMeasure.Voices)
-        {
-            for (int eventIndex = 0; eventIndex < voice.Events.Length; eventIndex++)
-            {
-                if (voice.Events[eventIndex] is not Chord chord)
-                {
-                    continue;
-                }
-
-                for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
-                {
-                    int slot = filled++;
-                    while (slot > 0 && onsets[slot - 1] > chord.Onset)
-                    {
-                        onsets[slot] = onsets[slot - 1];
-                        order[slot] = order[slot - 1];
-                        slot--;
-                    }
-
-                    onsets[slot] = chord.Onset;
-                    order[slot] = (voice.Number, eventIndex, noteIndex);
-                }
-            }
-        }
-
+        order = new (int, EventId, int)[count];
         AccidentalInput[] inputs = new AccidentalInput[count];
-        for (int i = 0; i < count; i++)
+        int slot = 0;
+        foreach ((int voice, Chord chord, _, Chord? previous) in chords)
         {
-            Voice voice = default!;
-            foreach (Voice candidate in staffMeasure.Voices)
+            for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
             {
-                if (candidate.Number == order[i].Voice)
+                Pitch pitch = chord.Notes[noteIndex].Pitch;
+                bool tiedFromPrevious = false;
+                if (previous is not null)
                 {
-                    voice = candidate;
-                    break;
-                }
-            }
-
-            Chord chord = (Chord)voice.Events[order[i].Event];
-            Pitch pitch = chord.Notes[order[i].Note].Pitch;
-            bool tiedFromPrevious = false;
-            if (order[i].Event > 0 && voice.Events[order[i].Event - 1] is Chord previous)
-            {
-                foreach (Note candidate in previous.Notes)
-                {
-                    if (candidate.TiedToNext && candidate.Pitch == pitch)
+                    foreach (Note candidate in previous.Notes)
                     {
-                        tiedFromPrevious = true;
+                        if (candidate.TiedToNext && candidate.Pitch == pitch)
+                        {
+                            tiedFromPrevious = true;
+                        }
                     }
                 }
-            }
 
-            inputs[i] = new AccidentalInput(measureIndex, pitch, tiedFromPrevious, measure.KeySignature);
+                order[slot] = (voice, chord.Id, noteIndex);
+                inputs[slot] = new AccidentalInput(measureIndex, pitch, tiedFromPrevious, measure.KeySignature);
+                slot++;
+            }
         }
 
         ImmutableArray<AccidentalMark> resolved = new AccidentalResolver().Resolve(inputs);

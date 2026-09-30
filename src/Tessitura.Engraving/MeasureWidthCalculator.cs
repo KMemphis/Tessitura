@@ -99,7 +99,18 @@ public sealed class MeasureWidthCalculator
 
     private void AddEvent(List<MeasureColumn> columns, MusicEvent musicEvent, Style style)
     {
-        if (musicEvent.Onset < Fraction.Zero || musicEvent.Duration.Length <= Fraction.Zero)
+        if (musicEvent is TupletGroup)
+        {
+            // Members space like ordinary events at their sounding onsets and lengths.
+            foreach ((MusicEvent leaf, Fraction onset, Fraction length) in new[] { musicEvent }.Flatten())
+            {
+                AddEvent(columns, leaf.WithOnset(onset), style);
+            }
+
+            return;
+        }
+
+        if (musicEvent.Onset < Fraction.Zero || musicEvent.Length <= Fraction.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(musicEvent),
                 "Event onsets must be nonnegative and durations must be positive.");
@@ -171,8 +182,8 @@ public sealed class MeasureWidthCalculator
             MeasureColumn existing = columns[columnIndex];
             columns[columnIndex] = existing with
             {
-                Duration = musicEvent.Duration.Length < existing.Duration
-                    ? musicEvent.Duration.Length
+                Duration = musicEvent.Length < existing.Duration
+                    ? musicEvent.Length
                     : existing.Duration,
                 LeftExtent = Math.Max(leftExtent, existing.LeftExtent),
                 RightExtent = Math.Max(rightExtent, existing.RightExtent),
@@ -181,7 +192,7 @@ public sealed class MeasureWidthCalculator
         }
 
         columns.Insert(columnIndex, new MeasureColumn(musicEvent.Onset,
-            musicEvent.Duration.Length, leftExtent, rightExtent));
+            musicEvent.Length, leftExtent, rightExtent));
     }
 
     private static double LeftExtent(SmuflBoundingBox box) => Math.Max(0, -box.SouthWest.X);

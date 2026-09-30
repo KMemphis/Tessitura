@@ -87,7 +87,7 @@ public sealed record ClipboardFragment(Fraction Length, ImmutableArray<Clipboard
                 start = onset;
             }
 
-            Fraction eventEnd = onset + musicEvent.Duration.Length;
+            Fraction eventEnd = onset + musicEvent.Length;
             if (eventEnd > end)
             {
                 end = eventEnd;

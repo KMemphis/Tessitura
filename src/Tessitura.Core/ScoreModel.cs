@@ -143,7 +143,11 @@ public sealed record Voice(int Number, ImmutableArray<MusicEvent> Events);
 /// <param name="Id">The stable event identifier.</param>
 /// <param name="Onset">The onset in whole-note units from the measure start.</param>
 /// <param name="Duration">The notated duration.</param>
-public abstract record MusicEvent(EventId Id, Fraction Onset, Duration Duration);
+public abstract record MusicEvent(EventId Id, Fraction Onset, Duration Duration)
+{
+    /// <summary>Gets the time the event occupies in the measure, in whole-note units.</summary>
+    public virtual Fraction Length => Duration.Length;
+}
 
 /// <summary>Specifies how the stem direction is chosen.</summary>
 public enum StemDirection
@@ -174,6 +178,59 @@ public sealed record Chord(
 /// <param name="Onset">The exact musical onset.</param>
 /// <param name="Duration">The notated duration.</param>
 public sealed record Rest(EventId Id, Fraction Onset, Duration Duration) : MusicEvent(Id, Onset, Duration);
+
+/// <summary>
+/// Contains events squeezed into the time of fewer (or more) of the same value, such as a triplet:
+/// <c>Actual</c> members sound in the time of <c>Normal</c> members of the base value.
+/// </summary>
+/// <param name="Id">The stable event identifier.</param>
+/// <param name="Onset">The exact musical onset of the group.</param>
+/// <param name="Duration">The base note value of one group unit (an eighth for eighth-note triplets).</param>
+/// <param name="Actual">How many units are played, such as 3.</param>
+/// <param name="Normal">How many units the time equals, such as 2.</param>
+/// <param name="Children">The members; their onsets count from the group start in sounding time, and their durations are notated values.</param>
+public sealed record TupletGroup(
+    EventId Id,
+    Fraction Onset,
+    Duration Duration,
+    int Actual,
+    int Normal,
+    ImmutableArray<MusicEvent> Children) : MusicEvent(Id, Onset, Duration)
+{
+    /// <summary>Gets the time the whole group occupies: <c>Normal</c> units of the base value.</summary>
+    public override Fraction Length => Duration.Length * new Fraction(Normal, 1);
+
+    /// <summary>Gets the ratio that turns a member's notated length into its sounding length.</summary>
+    public Fraction Ratio => new(Normal, Actual);
+
+    /// <summary>Checks that the members exactly fill the group with no gap or overlap.</summary>
+    /// <returns>Whether the ratio is valid and the members tile the group, also in nested groups.</returns>
+    public bool IsConsistent()
+    {
+        if (Actual < 2 || Normal < 1 || Actual == Normal || Children.IsDefaultOrEmpty)
+        {
+            return false;
+        }
+
+        Fraction expected = Fraction.Zero;
+        foreach (MusicEvent child in Children)
+        {
+            if (child.Onset != expected)
+            {
+                return false;
+            }
+
+            if (child is TupletGroup inner && !inner.IsConsistent())
+            {
+                return false;
+            }
+
+            expected += child.Length * Ratio;
+        }
+
+        return expected == Length;
+    }
+}
 
 /// <summary>Contains one written note.</summary>
 /// <param name="Pitch">The written pitch.</param>
@@ -220,7 +277,12 @@ public static class ScoreValidator
                     return false;
                 }
 
-                expectedOnset += musicEvent.Duration.Length;
+                if (musicEvent is TupletGroup group && !group.IsConsistent())
+                {
+                    return false;
+                }
+
+                expectedOnset += musicEvent.Length;
                 if (expectedOnset > measure.TimeSignature.Length)
                 {
                     return false;

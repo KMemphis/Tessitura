@@ -35,28 +35,7 @@ internal static class ScoreMapper
             List<VoiceDto> voices = [];
             foreach (Voice voice in score.Content[key].Voices)
             {
-                List<EventDto> events = [];
-                foreach (MusicEvent musicEvent in voice.Events)
-                {
-                    List<NoteDto> notes = [];
-                    string kind = "rest";
-                    int stem = 0;
-                    if (musicEvent is Chord chord)
-                    {
-                        kind = "chord";
-                        stem = (int)chord.Stem;
-                        foreach (Note note in chord.Notes)
-                        {
-                            notes.Add(new NoteDto((int)note.Pitch.Step, note.Pitch.Alter,
-                                note.Pitch.Octave, note.TiedToNext));
-                        }
-                    }
-
-                    events.Add(new EventDto(kind, musicEvent.Id.Value, musicEvent.Onset.Num,
-                        musicEvent.Onset.Den, (int)musicEvent.Duration.Value, musicEvent.Duration.Dots,
-                        stem, notes));
-                }
-
+                List<EventDto> events = [.. voice.Events.Select(ToEventDto)];
                 voices.Add(new VoiceDto(voice.Number, events));
             }
 
@@ -64,6 +43,56 @@ internal static class ScoreMapper
         }
 
         return new ScoreDto(score.Metadata.Title, score.Metadata.Composer, instruments, measures, content);
+    }
+
+    private static EventDto ToEventDto(MusicEvent musicEvent)
+    {
+        if (musicEvent is TupletGroup group)
+        {
+            return new EventDto("tuplet", group.Id.Value, group.Onset.Num, group.Onset.Den, (int)group.Duration.Value,
+                group.Duration.Dots, 0, [], group.Actual, group.Normal, [.. group.Children.Select(ToEventDto)]);
+        }
+
+        List<NoteDto> notes = [];
+        string kind = "rest";
+        int stem = 0;
+        if (musicEvent is Chord chord)
+        {
+            kind = "chord";
+            stem = (int)chord.Stem;
+            foreach (Note note in chord.Notes)
+            {
+                notes.Add(new NoteDto((int)note.Pitch.Step, note.Pitch.Alter, note.Pitch.Octave, note.TiedToNext));
+            }
+        }
+
+        return new EventDto(kind, musicEvent.Id.Value, musicEvent.Onset.Num, musicEvent.Onset.Den,
+            (int)musicEvent.Duration.Value, musicEvent.Duration.Dots, stem, notes);
+    }
+
+    private static MusicEvent FromEventDto(EventDto e)
+    {
+        EventId id = new(e.Id);
+        Fraction onset = new(e.OnsetNum, e.OnsetDen);
+        Duration duration = new((NoteValue)e.Value, e.Dots);
+        switch (e.Kind)
+        {
+            case "rest":
+                return new Rest(id, onset, duration);
+            case "tuplet":
+                return new TupletGroup(id, onset, duration, e.Actual, e.Normal,
+                    [.. (e.Children ?? []).Select(FromEventDto)]);
+            case "chord":
+                ImmutableArray<Note>.Builder notes = ImmutableArray.CreateBuilder<Note>();
+                foreach (NoteDto note in e.Notes)
+                {
+                    notes.Add(new Note(new Pitch((Step)note.Step, note.Alter, note.Octave), note.Tied));
+                }
+
+                return new Chord(id, onset, duration, notes.ToImmutable(), (StemDirection)e.Stem);
+            default:
+                throw new InvalidDataException($"Unknown event kind '{e.Kind}'.");
+        }
     }
 
     public static Score FromDto(ScoreDto dto)
@@ -95,33 +124,8 @@ internal static class ScoreMapper
             ImmutableArray<Voice>.Builder voices = ImmutableArray.CreateBuilder<Voice>();
             foreach (VoiceDto voice in entry.Voices)
             {
-                ImmutableArray<MusicEvent>.Builder events = ImmutableArray.CreateBuilder<MusicEvent>();
-                foreach (EventDto e in voice.Events)
-                {
-                    EventId id = new(e.Id);
-                    Fraction onset = new(e.OnsetNum, e.OnsetDen);
-                    Duration duration = new((NoteValue)e.Value, e.Dots);
-                    if (e.Kind == "rest")
-                    {
-                        events.Add(new Rest(id, onset, duration));
-                        continue;
-                    }
-
-                    if (e.Kind != "chord")
-                    {
-                        throw new InvalidDataException($"Unknown event kind '{e.Kind}'.");
-                    }
-
-                    ImmutableArray<Note>.Builder notes = ImmutableArray.CreateBuilder<Note>();
-                    foreach (NoteDto note in e.Notes)
-                    {
-                        notes.Add(new Note(new Pitch((Step)note.Step, note.Alter, note.Octave), note.Tied));
-                    }
-
-                    events.Add(new Chord(id, onset, duration, notes.ToImmutable(), (StemDirection)e.Stem));
-                }
-
-                voices.Add(new Voice(voice.Number, events.ToImmutable()));
+                ImmutableArray<MusicEvent> events = [.. voice.Events.Select(FromEventDto)];
+                voices.Add(new Voice(voice.Number, events));
             }
 
             content[new StaffMeasureKey(entry.Staff, entry.Measure)] = new StaffMeasure(voices.ToImmutable());

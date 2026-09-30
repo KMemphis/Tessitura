@@ -103,6 +103,49 @@ public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch, Duration? D
         });
 }
 
+/// <summary>
+/// Turns a rest into a tuplet group of rests: <c>Actual</c> units in the time of the rest, which spans
+/// <c>Normal</c> units, so a quarter rest with 3:2 becomes a triplet of three eighth rests.
+/// </summary>
+/// <param name="RestId">The rest to replace.</param>
+/// <param name="Actual">How many units are played.</param>
+/// <param name="Normal">How many units the time equals.</param>
+public sealed record CreateTupletCommand(EventId RestId, int Actual, int Normal) : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Create tuplet";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context) => ScoreCommandEditor.UpdateEvent(
+        score,
+        context,
+        RestId,
+        musicEvent =>
+        {
+            if (musicEvent is not Rest rest)
+            {
+                throw new InvalidOperationException("Only a rest can be turned into a tuplet.");
+            }
+
+            if (Actual < 2 || Normal < 1 || Actual == Normal)
+            {
+                throw new ArgumentOutOfRangeException(nameof(Actual), "A tuplet needs different actual and normal counts.");
+            }
+
+            Fraction unitLength = rest.Length / new Fraction(Normal, 1);
+            Duration? unit = ScoreCommandEditor.ToDuration(unitLength)
+                ?? throw new InvalidOperationException("The rest cannot be divided into notated units of that ratio.");
+            ImmutableArray<MusicEvent>.Builder children = ImmutableArray.CreateBuilder<MusicEvent>(Actual);
+            Fraction step = unitLength * new Fraction(Normal, Actual);
+            for (int index = 0; index < Actual; index++)
+            {
+                children.Add(new Rest(index == 0 ? rest.Id : new EventId(Guid.NewGuid()), step * new Fraction(index, 1), unit.Value));
+            }
+
+            return new TupletGroup(new EventId(Guid.NewGuid()), rest.Onset, unit.Value, Actual, Normal, children.MoveToImmutable());
+        });
+}
+
 /// <summary>Adds a new measure after the score's current final measure.</summary>
 public sealed record AppendMeasureCommand : IScoreCommand
 {
@@ -351,6 +394,22 @@ internal static class ScoreCommandEditor
         return score;
     }
 
+    public static Duration? ToDuration(Fraction length)
+    {
+        foreach (int value in new[] { 1, 2, 4, 8, 16, 32, 64, 128 })
+        {
+            for (int dots = 0; dots <= 3; dots++)
+            {
+                if (new Duration((NoteValue)value, dots).Length == length)
+                {
+                    return new Duration((NoteValue)value, dots);
+                }
+            }
+        }
+
+        return null;
+    }
+
     public static Score UpdateEvent(
         Score score,
         EditContext context,
@@ -368,13 +427,42 @@ internal static class ScoreCommandEditor
 
         int voiceIndex = FindVoiceIndex(staffMeasure, context.VoiceNumber);
         Voice voice = staffMeasure.Voices[voiceIndex];
-        int eventIndex = FindEventIndex(voice, eventId);
-        MusicEvent updatedEvent = update(voice.Events[eventIndex]);
-        ImmutableArray<MusicEvent> updatedEvents = voice.Events.SetItem(eventIndex, updatedEvent);
+        ImmutableArray<MusicEvent> updatedEvents = UpdateInTree(voice.Events, eventId, update)
+            ?? throw new KeyNotFoundException($"Event '{eventId.Value}' does not exist in the selected voice.");
         ImmutableArray<Voice> updatedVoices = staffMeasure.Voices.SetItem(voiceIndex, voice with { Events = updatedEvents });
         StaffMeasure updatedMeasure = staffMeasure with { Voices = updatedVoices };
         Score updatedScore = score with { Content = score.Content.SetItem(key, updatedMeasure) };
         return RhythmicScoreNormalizer.NormalizeVoice(updatedScore, context);
+    }
+
+    // Finds an event at any depth of tuplet groups and replaces it; a member may not change its length.
+    private static ImmutableArray<MusicEvent>? UpdateInTree(ImmutableArray<MusicEvent> events, EventId id, Func<MusicEvent, MusicEvent> update)
+    {
+        for (int index = 0; index < events.Length; index++)
+        {
+            MusicEvent current = events[index];
+            if (current.Id == id)
+            {
+                return events.SetItem(index, update(current));
+            }
+
+            if (current is TupletGroup group)
+            {
+                ImmutableArray<MusicEvent>? children = UpdateInTree(group.Children, id, update);
+                if (children is not null)
+                {
+                    TupletGroup changed = group with { Children = children.Value };
+                    if (!changed.IsConsistent())
+                    {
+                        throw new InvalidOperationException("The change would break the tuplet's timing.");
+                    }
+
+                    return events.SetItem(index, changed);
+                }
+            }
+        }
+
+        return null;
     }
 
     public static Score UpdateNote(

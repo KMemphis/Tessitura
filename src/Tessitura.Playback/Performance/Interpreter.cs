@@ -87,11 +87,11 @@ public static class Interpreter
 
                 foreach (Voice voice in content.Voices)
                 {
-                    foreach (MusicEvent musicEvent in voice.Events)
+                    foreach ((MusicEvent musicEvent, Fraction leafOnset, _) in voice.Events.Flatten())
                     {
                         if (dynamicAt.TryGetValue(musicEvent.Id, out Dynamic level))
                         {
-                            levels[measureStart + musicEvent.Onset] = level;
+                            levels[measureStart + leafOnset] = level;
                         }
                     }
                 }
@@ -117,9 +117,9 @@ public static class Interpreter
                 ? content.Voices.FirstOrDefault(v => v.Number == voiceNumber) : null;
             if (voice is not null)
             {
-                foreach (MusicEvent musicEvent in voice.Events)
+                foreach ((MusicEvent musicEvent, Fraction leafOnset, Fraction leafLength) in voice.Events.Flatten())
                 {
-                    Fraction start = measureStart + musicEvent.Onset;
+                    Fraction start = measureStart + leafOnset;
                     Dictionary<int, int> next = [];
                     if (musicEvent is Chord chord)
                     {
@@ -136,13 +136,13 @@ public static class Interpreter
                                 index = existing;
                                 pending[index] = (pending[index].Note with
                                 {
-                                    NotatedLength = pending[index].Note.NotatedLength + chord.Duration.Length,
+                                    NotatedLength = pending[index].Note.NotatedLength + leafLength,
                                 }, pending[index].Articulations);
                             }
                             else
                             {
                                 pending.Add((new PerformedNote(instrument, staff, voiceNumber, midi, start,
-                                    chord.Duration.Length, chord.Duration.Length, Velocity(settings, level, marks)), marks));
+                                    leafLength, leafLength, Velocity(settings, level, marks)), marks));
                                 index = pending.Count - 1;
                             }
 

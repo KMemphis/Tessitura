@@ -81,6 +81,27 @@ internal static class RhythmicScoreNormalizer
                         normalizedEvents);
                     break;
                 }
+                case TupletGroup group:
+                {
+                    // A tuplet group is indivisible: it must fit inside one measure.
+                    if (locatedEvent.Onset > cursor)
+                    {
+                        bool preferredIdUsed = false;
+                        AppendRests(cursor, locatedEvent.Onset, null, ref preferredIdUsed,
+                            score.Measures, measureStarts, normalizedEvents);
+                        cursor = locatedEvent.Onset;
+                    }
+
+                    int groupMeasure = FindMeasureIndex(cursor, score.Measures, measureStarts);
+                    if (groupMeasure < 0 || cursor + group.Length > measureStarts[groupMeasure] + score.Measures[groupMeasure].TimeSignature.Length)
+                    {
+                        throw new InvalidOperationException("A tuplet group cannot cross a barline.");
+                    }
+
+                    normalizedEvents[groupMeasure].Add(group.WithOnset(cursor - measureStarts[groupMeasure]));
+                    cursor += group.Length;
+                    break;
+                }
                 default:
                     throw new InvalidOperationException(
                         $"Rhythmic normalization does not support {locatedEvent.Event.GetType().Name} events.");
@@ -150,7 +171,7 @@ internal static class RhythmicScoreNormalizer
             else
             {
                 Fraction start = locatedEvent.Onset > cursor ? locatedEvent.Onset : cursor;
-                cursor = start + locatedEvent.Event.Duration.Length;
+                cursor = start + locatedEvent.Event.Length;
             }
         }
 

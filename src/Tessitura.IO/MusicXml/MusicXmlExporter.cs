@@ -131,7 +131,7 @@ public static class MusicXmlExporter
 
                 foreach (Voice voice in content.Voices)
                 {
-                    if (voice.Number == 1 || voice.Events.Any(e => e is Chord))
+                    if (voice.Number == 1 || voice.Events.Flatten().Any(l => l.Event is Chord))
                     {
                         numbers.Add(voice.Number);
                     }
@@ -192,7 +192,7 @@ public static class MusicXmlExporter
 
                 foreach (MusicEvent musicEvent in voice.Events)
                 {
-                    AddEvent(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties);
+                    AddTree(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties, Fraction.One, 1, 1, null);
                 }
             }
 
@@ -252,16 +252,66 @@ public static class MusicXmlExporter
         return attributes;
     }
 
-    private static void AddEvent(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber,
-        int staffCount, int divisions, HashSet<Pitch> openTies)
+    // Walks tuplet groups: every leaf gets the combined time modification of its enclosing groups, and the first
+    // and last leaf of a group carry the tuplet start and stop marks.
+    private static void AddTree(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber, int staffCount, int divisions,
+        HashSet<Pitch> openTies, Fraction scale, int actual, int normal, string? bracket)
     {
+        if (musicEvent is TupletGroup group)
+        {
+            int childCount = group.Children.Length;
+            for (int index = 0; index < childCount; index++)
+            {
+                string? mark = index == 0 ? "start" : index == childCount - 1 ? "stop" : null;
+                AddTree(measure, group.Children[index], staff, voiceNumber, staffCount, divisions, openTies,
+                    scale * group.Ratio, actual * group.Actual, normal * group.Normal, mark);
+            }
+
+            return;
+        }
+
+        List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale);
+        if (actual == normal)
+        {
+            return;
+        }
+
+        // The tuplet bracket mark belongs to the first or last note of the group only.
+        for (int index = 0; index < written.Count; index++)
+        {
+            InsertTimeModification(written[index], actual, normal, index == 0 ? bracket : null);
+        }
+    }
+
+    private static void InsertTimeModification(XElement note, int actual, int normal, string? bracket)
+    {
+        XElement modification = new("time-modification", new XElement("actual-notes", actual), new XElement("normal-notes", normal));
+        XElement? after = note.Elements().LastOrDefault(e => e.Name == "dot") ?? note.Element("type");
+        after!.AddAfterSelf(modification);
+        if (bracket is not null)
+        {
+            XElement notations = note.Element("notations") ?? new XElement("notations");
+            notations.Add(new XElement("tuplet", new XAttribute("type", bracket)));
+            if (notations.Parent is null)
+            {
+                note.Add(notations);
+            }
+        }
+    }
+
+    private static List<XElement> AddEvent(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber,
+        int staffCount, int divisions, HashSet<Pitch> openTies, Fraction scale)
+    {
+        List<XElement> written = [];
         string voiceLabel = (staff * 4 + voiceNumber).ToString(CultureInfo.InvariantCulture);
-        int duration = ToDivisions(musicEvent.Duration.Length, divisions);
+        int duration = ToDivisions(musicEvent.Length * scale, divisions);
         if (musicEvent is Rest)
         {
-            measure.Add(BuildNote(new XElement("rest"), duration, musicEvent.Duration, voiceLabel, staff, staffCount, false, false, false));
+            XElement restNote = BuildNote(new XElement("rest"), duration, musicEvent.Duration, voiceLabel, staff, staffCount, false, false, false);
+            measure.Add(restNote);
+            written.Add(restNote);
             openTies.Clear();
-            return;
+            return written;
         }
 
         Chord chord = (Chord)musicEvent;
@@ -277,7 +327,9 @@ public static class MusicXmlExporter
             }
 
             pitch.Add(new XElement("octave", note.Pitch.Octave));
-            measure.Add(BuildNote(pitch, duration, chord.Duration, voiceLabel, staff, staffCount, index > 0, stop, note.TiedToNext));
+            XElement noteElement = BuildNote(pitch, duration, chord.Duration, voiceLabel, staff, staffCount, index > 0, stop, note.TiedToNext);
+            measure.Add(noteElement);
+            written.Add(noteElement);
             if (note.TiedToNext)
             {
                 nextTies.Add(note.Pitch);
@@ -286,6 +338,7 @@ public static class MusicXmlExporter
 
         openTies.Clear();
         openTies.UnionWith(nextTies);
+        return written;
     }
 
     private static XElement BuildNote(XElement content, int duration, Duration notated, string voice,
@@ -365,9 +418,9 @@ public static class MusicXmlExporter
         {
             foreach (Voice voice in content.Voices)
             {
-                foreach (MusicEvent musicEvent in voice.Events)
+                foreach ((MusicEvent _, Fraction _, Fraction length) in voice.Events.Flatten())
                 {
-                    Fraction quarter = musicEvent.Duration.Length * new Fraction(4, 1);
+                    Fraction quarter = length * new Fraction(4, 1);
                     divisions = Lcm(divisions, quarter.Den);
                 }
             }
