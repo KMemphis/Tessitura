@@ -101,3 +101,9 @@
 - La lista se serializa con metadatos generados por `System.Text.Json`. `Page` y `Path` comparan el contenido de sus arreglos por valor; el espacio de nombres `DisplayLists` evita conflictos con los tipos `Path` y `Rect` de otras capas.
 - Dos pruebas nuevas cubren la ida y vuelta JSON de las cinco primitivas, sus identificadores y cajas, la igualdad estructural y la detección de cambios en glifos y curvas. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 36 pruebas sin fallos ni omisiones.
 - No quedan pendientes de F1.1. Siguiente tarea: F1.2, renderizar la lista de dibujo con SkiaSharp.
+
+## 2026-09-29 · F1.2 Renderizador de listas de dibujo
+
+- Se añadió `DisplayListRenderer` en Rendering para dibujar `Page` sobre `SKCanvas` y grabarla como `SKPicture`; admite glifos, líneas, curvas, texto y rectángulos. Engraving permanece independiente de SkiaSharp.
+- Dos pruebas nuevas comprueban que la nota de F0.10 coincide píxel por píxel con el renderizado provisional y con la reproducción del `SKPicture`, y que se dibujan curvas, texto y rectángulos.
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 38 pruebas sin fallos ni omisiones. No quedan pendientes de F1.2. Siguiente tarea: F1.3, imágenes de referencia.
