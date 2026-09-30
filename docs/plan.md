@@ -28,7 +28,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 
 ## F1 · Motor de grabado v0 (semanas 7–16)
 
-- [ ] **F1.1 · Lista de dibujo.** Primitivas `Glyph`, `Line`, `Path`, `Text` y `Rect` con `ElementId` y caja, agrupadas en `Page`, dentro de Engraving y sin SkiaSharp. *Hecho cuando:* las primitivas se serializan y comparan por valor en pruebas.
+- [x] **F1.1 · Lista de dibujo.** Primitivas `Glyph`, `Line`, `Path`, `Text` y `Rect` con `ElementId` y caja, agrupadas en `Page`, dentro de Engraving y sin SkiaSharp. *Hecho cuando:* las primitivas se serializan y comparan por valor en pruebas.
 - [ ] **F1.2 · Renderer.** `DisplayListRenderer` en Rendering que dibuja una `Page` sobre un `SKCanvas` y la graba como `SKPicture`. *Hecho cuando:* la nota de F0.10 se dibuja desde una lista de dibujo con el mismo resultado.
 - [ ] **F1.3 · Imágenes de referencia.** Infraestructura que renderiza un ejemplo a PNG, lo compara con la versión aprobada con tolerancia y guarda la diferencia. *Hecho cuando:* un test falla al alterar un glifo y pasa al aprobar la nueva imagen.
 - [ ] **F1.4 · Style.** Objeto de estilo con valores por defecto de `engravingDefaults` y de Behind Bars (longitud de plica 3,5 espacios, separaciones mínimas). *Hecho cuando:* cada valor cita su fuente y se carga y guarda en JSON.

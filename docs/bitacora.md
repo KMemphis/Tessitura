@@ -94,3 +94,10 @@
 - La primera CI enumeró correctamente Windows (sin entradas, con salida Microsoft GS Wavetable Synth) y recibió la nota de loopback en macOS; Ubuntu confirmó ausencia de backend nativo DryWetMIDI. Se corrigió el diagnóstico para dejarlo explícito sin fallar la matriz por esa incompatibilidad prevista.
 - [CI #36654098552](https://github.com/KMemphis/Tessitura/actions/runs/36654098552) pasó en los tres sistemas. Ubuntu informó `Supported=false`, Windows enumeró una salida y macOS recibió la nota virtual. `dotnet build` local terminó con 0 advertencias y 0 errores; `dotnet test` pasó 34 pruebas sin fallos ni omisiones.
 - El propietario eligió DryWetMIDI para Windows/macOS y ALSA para Linux. Las pruebas con teclado físico en Windows/Linux se trasladaron a F3.9; el adaptador ALSA aún no está implementado. F0.12 queda cerrada y sigue la puerta F0, pendiente de aprobación antes de F1.1.
+
+## 2026-09-29 · F1.1 Lista de dibujo
+
+- El propietario aprobó la puerta F0 y se inició F1. Añadí en Engraving las primitivas inmutables `Glyph`, `Line`, `Path`, `Text` y `Rect`, con `ElementId`, caja y coordenadas en espacios de pentagrama, agrupadas en `Page`.
+- La lista se serializa con metadatos generados por `System.Text.Json`. `Page` y `Path` comparan el contenido de sus arreglos por valor; el espacio de nombres `DisplayLists` evita conflictos con los tipos `Path` y `Rect` de otras capas.
+- Dos pruebas nuevas cubren la ida y vuelta JSON de las cinco primitivas, sus identificadores y cajas, la igualdad estructural y la detección de cambios en glifos y curvas. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 36 pruebas sin fallos ni omisiones.
+- No quedan pendientes de F1.1. Siguiente tarea: F1.2, renderizar la lista de dibujo con SkiaSharp.
