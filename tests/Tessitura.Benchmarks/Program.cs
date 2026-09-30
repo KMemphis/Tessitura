@@ -23,6 +23,12 @@ internal static class Program
             return 0;
         }
 
+        if (args.Length > 0 && args[0] == "presentation-benchmark")
+        {
+            BenchmarkSwitcher.FromAssembly(typeof(PresentationBenchmarks).Assembly).Run(args[1..]);
+            return 0;
+        }
+
         if (args.Length == 2 && args[0] == "midi-probe")
         {
             return MidiProbe.Run(args[1]);
@@ -31,7 +37,7 @@ internal static class Program
         if (args.Length != 2 || args[0] != "audio-probe" ||
             (args[1] != "openal" && args[1] != "miniaudio"))
         {
-            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio OR midi-probe list|loopback OR layout-benchmark [BenchmarkDotNet options]");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio OR midi-probe list|loopback OR layout-benchmark|presentation-benchmark [BenchmarkDotNet options]");
             return 2;
         }
 

@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Tessitura.Rendering;
+using Avalonia.Threading;
 using Tessitura.Smufl;
 using Tessitura.Core;
 
@@ -20,9 +20,12 @@ public sealed class TessituraApplication : Application
             SmuflMetadata metadata = SmuflMetadata.Load(
                 Path.Combine(assets, "Bravura.json"),
                 Path.Combine(assets, "smufl_glyph_names.json"));
-            MusicPreviewRenderer music = new(Path.Combine(assets, "Bravura.otf"), metadata);
             ScoreInputController scoreInput = new(CreateInitialScore());
-            ScoreCanvas canvas = new(music) { ScoreInputController = scoreInput };
+            ScoreCanvas canvas = new() { ScoreInputController = scoreInput };
+            ScoreUpdateCoordinator updates = new(scoreInput, metadata,
+                Path.Combine(assets, "Bravura.otf"),
+                postToUi: action => Dispatcher.UIThread.Post(action));
+            updates.PresentationReady += (_, presentation) => canvas.AttachPresentation(presentation);
             string settingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Tessitura",
@@ -39,7 +42,11 @@ public sealed class TessituraApplication : Application
             actionDefinitions.AddRange(scoreInput.CreateActions());
             ActionRegistry actions = ActionRegistry.LoadOrCreate(actionDefinitions, settingsPath);
             canvas.AttachActionRegistry(actions);
-            desktop.Exit += (_, _) => music.Dispose();
+            desktop.Exit += (_, _) =>
+            {
+                updates.Dispose();
+                canvas.DisposePresentation();
+            };
             Window mainWindow = new()
             {
                 Title = "Tessitura",
@@ -51,6 +58,7 @@ public sealed class TessituraApplication : Application
             };
             mainWindow.Opened += (_, _) => canvas.Focus();
             desktop.MainWindow = mainWindow;
+            updates.Start();
         }
 
         base.OnFrameworkInitializationCompleted();

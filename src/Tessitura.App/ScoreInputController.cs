@@ -233,6 +233,28 @@ public sealed class ScoreInputController
         NotifyStateChanged();
     }
 
+    /// <summary>Checks whether an identifier belongs to a current score event.</summary>
+    /// <param name="eventId">The event identifier to check.</param>
+    /// <returns>Whether the current score contains the event.</returns>
+    public bool ContainsEvent(EventId eventId)
+    {
+        foreach (StaffMeasure staffMeasure in CurrentScore.Content.Values)
+        {
+            foreach (Voice voice in staffMeasure.Voices)
+            {
+                foreach (MusicEvent musicEvent in voice.Events)
+                {
+                    if (musicEvent.Id == eventId)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private void WriteNote(Step step)
     {
         if (Mode != ScoreInputMode.NoteEntry)

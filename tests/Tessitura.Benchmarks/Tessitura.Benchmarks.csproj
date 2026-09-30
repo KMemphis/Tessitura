@@ -10,7 +10,9 @@
     <PackageReference Include="Silk.NET.OpenAL" />
     <PackageReference Include="Silk.NET.OpenAL.Soft.Native" />
     <PackageReference Include="JAJ.Packages.MiniAudioEx" />
+    <PackageReference Include="SkiaSharp" />
     <Content Include="../assets/sf_spec_test.sf2" Link="sf_spec_test.sf2" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Tessitura.Engraving/Tessitura.Engraving.csproj" />
+    <ProjectReference Include="../../src/Tessitura.Rendering/Tessitura.Rendering.csproj" />
   </ItemGroup>
 </Project>

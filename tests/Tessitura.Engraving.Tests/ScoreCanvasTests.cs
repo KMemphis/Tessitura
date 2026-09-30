@@ -73,4 +73,30 @@ public sealed class ScoreCanvasTests
         Assert.True(selected);
         Assert.Equal(new SelectionItem(eventId, 0), Assert.Single(input.CurrentSelection.Items));
     }
+
+    [Fact]
+    public void ClickOnStaffLineDoesNotSelectANonEventIdentifier()
+    {
+        EventId eventId = new(Guid.NewGuid());
+        Chord chord = new(eventId, Fraction.Zero, new Duration(NoteValue.Whole, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Score score = new(
+            new ScoreMetadata("Test", ""),
+            [new Instrument("Piano", [new Staff("Treble")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
+                new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [chord])])));
+        ScoreInputController input = new(score);
+        ScoreCanvas canvas = new() { ScoreInputController = input };
+        Page page = new(1, 100, 100,
+        [new Tessitura.Engraving.DisplayLists.Line(new ElementId(Guid.Empty),
+            new DisplayBox(5, 5.5, 20, 0.2), new DisplayPoint(5, 5.6),
+            new DisplayPoint(25, 5.6), 0.2)]);
+        canvas.AttachDisplayPage(page);
+
+        bool selected = canvas.SelectAt(new Point(152, 107.2), KeyModifiers.None);
+
+        Assert.False(selected);
+        Assert.Empty(input.CurrentSelection.Items);
+    }
 }

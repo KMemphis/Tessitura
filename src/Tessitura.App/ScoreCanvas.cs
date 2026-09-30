@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Rendering.Composition;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
 using SkiaSharp;
@@ -23,6 +24,9 @@ public sealed class ScoreCanvas : Control
     private readonly MusicPreviewRenderer? _musicPreview;
     private ActionRegistry? _actionRegistry;
     private ScoreInputController? _scoreInputController;
+    private ScorePagePresentation? _presentation;
+    private readonly ScorePictureBridge _pictureBridge = new();
+    private CompositionCustomVisual? _compositionVisual;
     private PageSpatialIndex? _pageSpatialIndex;
     private double _displayPageStaffSpace = 12;
     private Point? _dragPointer;
@@ -35,6 +39,7 @@ public sealed class ScoreCanvas : Control
         Focusable = true;
         SizeChanged += (_, args) =>
         {
+            UpdateCompositionVisual();
             if (_userAdjusted || args.NewSize.Width <= 80 || args.NewSize.Height <= 80)
             {
                 return;
@@ -93,6 +98,7 @@ public sealed class ScoreCanvas : Control
         Zoom = Math.Clamp(Zoom * factor, 0.25, 4);
         PanOffset = new Vector(pointer.X - anchor.X * Zoom, pointer.Y - anchor.Y * Zoom);
         _userAdjusted = true;
+        UpdateCompositionVisual();
         InvalidateVisual();
     }
 
@@ -101,6 +107,7 @@ public sealed class ScoreCanvas : Control
     {
         PanOffset += delta;
         _userAdjusted = true;
+        UpdateCompositionVisual();
         InvalidateVisual();
     }
 
@@ -135,6 +142,35 @@ public sealed class ScoreCanvas : Control
         InvalidateVisual();
     }
 
+    /// <summary>Publishes a newly recorded score page and takes ownership of its presentation.</summary>
+    /// <param name="presentation">The latest score page prepared by the background coordinator.</param>
+    public void AttachPresentation(ScorePagePresentation presentation)
+    {
+        ArgumentNullException.ThrowIfNull(presentation);
+        if (!double.IsFinite(presentation.Composition.StaffSpacePoints) ||
+            presentation.Composition.StaffSpacePoints <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(presentation));
+        }
+
+        presentation.MarkPublished();
+        _presentation = presentation;
+        _pictureBridge.Publish(presentation);
+        _pageSpatialIndex = presentation.SpatialIndex;
+        _displayPageStaffSpace = presentation.Composition.StaffSpacePoints;
+        _compositionVisual?.SendHandlerMessage(new PictureChanged(Zoom, PanOffset));
+        InvalidateVisual();
+    }
+
+    /// <summary>Releases the current page when the window closes.</summary>
+    public void DisposePresentation()
+    {
+        _presentation = null;
+        _pageSpatialIndex = null;
+        _pictureBridge.Publish(null);
+        _compositionVisual?.SendHandlerMessage(new PictureChanged(Zoom, PanOffset));
+    }
+
     /// <summary>Selects the page element at a view point.</summary>
     /// <param name="viewPoint">The pointer location in canvas coordinates.</param>
     /// <param name="modifiers">The modifiers held with the pointer click.</param>
@@ -151,7 +187,7 @@ public sealed class ScoreCanvas : Control
             (pagePoint.X - 80) / _displayPageStaffSpace,
             (pagePoint.Y - 40) / _displayPageStaffSpace);
         ElementId? elementId = _pageSpatialIndex.HitTest(scorePoint);
-        if (elementId is not ElementId hit)
+        if (elementId is not ElementId hit || !_scoreInputController.ContainsEvent(new EventId(hit.Value)))
         {
             return false;
         }
@@ -176,7 +212,10 @@ public sealed class ScoreCanvas : Control
     /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
-        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _musicPreview));
+        _presentation?.MarkSceneBuilt();
+        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset,
+            _compositionVisual is null ? _musicPreview : null,
+            _compositionVisual is null ? _presentation : null));
         if (_pageSpatialIndex is not null && _scoreInputController is { CurrentSelection.Items.IsDefaultOrEmpty: false } selected)
         {
             context.Custom(new SelectionDrawOperation(
@@ -190,12 +229,39 @@ public sealed class ScoreCanvas : Control
 
         if (_scoreInputController is { Mode: ScoreInputMode.NoteEntry } inputController)
         {
+            Point cursorPoint = _presentation?.Composition.CursorLocation is DisplayPoint location
+                ? new Point(80 + location.X * _displayPageStaffSpace,
+                    40 + location.Y * _displayPageStaffSpace)
+                : GetCursorPagePoint(inputController);
             context.Custom(new CursorDrawOperation(
                 new Rect(Bounds.Size),
                 Zoom,
                 PanOffset,
-                GetCursorPagePoint(inputController)));
+                cursorPoint));
         }
+    }
+
+    /// <inheritdoc />
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        CompositionVisual? elementVisual = ElementComposition.GetElementVisual(this);
+        if (elementVisual is null)
+        {
+            return;
+        }
+
+        _compositionVisual = elementVisual.Compositor.CreateCustomVisual(
+            new ScorePictureHandler(_pictureBridge));
+        ElementComposition.SetElementChildVisual(this, _compositionVisual);
+        UpdateCompositionVisual();
+    }
+
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _compositionVisual = null;
+        base.OnDetachedFromVisualTree(e);
     }
 
     /// <inheritdoc />
@@ -280,7 +346,19 @@ public sealed class ScoreCanvas : Control
         PanOffset = new Vector(
             (Bounds.Width - 595 * Zoom) / 2 - 80 * Zoom,
             (Bounds.Height - 842 * Zoom) / 2 - 40 * Zoom);
+        UpdateCompositionVisual();
         InvalidateVisual();
+    }
+
+    private void UpdateCompositionVisual()
+    {
+        if (_compositionVisual is not CompositionCustomVisual visual)
+        {
+            return;
+        }
+
+        visual.Size = new Vector(Bounds.Width, Bounds.Height);
+        visual.SendHandlerMessage(new PictureChanged(Zoom, PanOffset));
     }
 
     private static Point GetCursorPagePoint(ScoreInputController controller)
@@ -337,8 +415,10 @@ public sealed class ScoreCanvas : Control
         Rect bounds,
         double zoom,
         Vector panOffset,
-        MusicPreviewRenderer? musicPreview) : ICustomDrawOperation
+        MusicPreviewRenderer? musicPreview,
+        ScorePagePresentation? presentation) : ICustomDrawOperation
     {
+        private readonly IDisposable? _pictureReference = presentation?.RetainPicture();
         public Rect Bounds { get; } = bounds;
 
         public void Render(ImmediateDrawingContext context)
@@ -351,15 +431,108 @@ public sealed class ScoreCanvas : Control
 
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
-            PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X, panOffset.Y, musicPreview);
+            PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X,
+                panOffset.Y, presentation is null ? musicPreview : null);
+            if (presentation is not null)
+            {
+                canvas.Save();
+                canvas.Translate((float)(panOffset.X + 80 * zoom),
+                    (float)(panOffset.Y + 40 * zoom));
+                canvas.Scale((float)zoom);
+                canvas.DrawPicture(presentation.Picture);
+                canvas.Restore();
+                LogFirstPaint(presentation);
+            }
         }
 
         public bool HitTest(Point point) => Bounds.Contains(point);
 
         public bool Equals(ICustomDrawOperation? other) => false;
 
-        public void Dispose()
+        public void Dispose() => _pictureReference?.Dispose();
+    }
+
+    private static void LogFirstPaint(ScorePagePresentation presentation)
+    {
+        TimeSpan? visibleElapsed = presentation.MarkPainted();
+        if (visibleElapsed is TimeSpan elapsed &&
+            Environment.GetEnvironmentVariable("TESSITURA_MEASURE_PAINT") == "1")
         {
+            Console.WriteLine($"score-visible-ms={elapsed.TotalMilliseconds:F3} " +
+                $"score-prepared-ms={presentation.PreparationElapsed.TotalMilliseconds:F3} " +
+                $"score-published-ms={presentation.PublishedElapsed?.TotalMilliseconds:F3} " +
+                $"score-scene-ms={presentation.SceneElapsed?.TotalMilliseconds:F3}");
+        }
+    }
+
+    private readonly record struct PictureChanged(double Zoom, Vector PanOffset);
+
+    private sealed class ScorePictureBridge
+    {
+        private readonly object _gate = new();
+        private ScorePagePresentation? _current;
+
+        public void Publish(ScorePagePresentation? presentation)
+        {
+            ScorePagePresentation? previous;
+            lock (_gate)
+            {
+                previous = _current;
+                _current = presentation;
+            }
+
+            previous?.Dispose();
+        }
+
+        public IDisposable? Acquire(out ScorePagePresentation? presentation)
+        {
+            lock (_gate)
+            {
+                presentation = _current;
+                return presentation?.RetainPicture();
+            }
+        }
+    }
+
+    private sealed class ScorePictureHandler(ScorePictureBridge bridge) : CompositionCustomVisualHandler
+    {
+        private PictureChanged _view = new(1, new Vector());
+
+        public override void OnMessage(object message)
+        {
+            if (message is PictureChanged changed)
+            {
+                _view = changed;
+                Invalidate();
+            }
+        }
+
+        public override void OnRender(ImmediateDrawingContext context)
+        {
+            IDisposable? reference = bridge.Acquire(out ScorePagePresentation? presentation);
+            if (reference is null || presentation is null)
+            {
+                return;
+            }
+
+            using (reference)
+            {
+                ISkiaSharpApiLeaseFeature? feature = context.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                if (feature is null)
+                {
+                    return;
+                }
+
+                using ISkiaSharpApiLease lease = feature.Lease();
+                SKCanvas canvas = lease.SkCanvas;
+                canvas.Save();
+                canvas.Translate((float)(_view.PanOffset.X + 80 * _view.Zoom),
+                    (float)(_view.PanOffset.Y + 40 * _view.Zoom));
+                canvas.Scale((float)_view.Zoom);
+                canvas.DrawPicture(presentation.Picture);
+                canvas.Restore();
+                LogFirstPaint(presentation);
+            }
         }
     }
 
