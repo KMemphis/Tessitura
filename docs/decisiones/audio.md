@@ -1,6 +1,6 @@
 # F0.11 · Comparación de salida de audio
 
-Fecha: 29 de septiembre de 2026. Estado: **decisión pendiente**.
+Fecha: 29 de septiembre de 2026. Estado: **miniaudio aprobado**.
 
 ## Requisito y cambio de licencia
 
@@ -34,8 +34,8 @@ El tiempo de arranque API mide el retorno de `SourcePlay` o `Play`, **no la late
 
 Windows y Linux se comprobaron mediante compilación y prueba del sintetizador en la [matriz de CI](https://github.com/KMemphis/Tessitura/actions/runs/36653006026), en verde en los tres sistemas; los runners no aportan una salida física fiable. No se han medido allí ni reproducción audible ni latencia. El propietario dispone solo de este Mac.
 
-## Recomendación y decisión solicitada
+## Recomendación y decisión
 
 **Recomiendo miniaudio** para la futura implementación de `IAudioOutput`: su callback entrega directamente los bloques PCM y un punto claro para contar muestras, y su licencia permisiva simplifica la distribución. Esta recomendación es provisional hasta medir latencia de extremo a extremo, cortes y estabilidad en hardware Windows y Linux. La licencia LGPL ya autoriza OpenAL Soft como alternativa si esas pruebas favorecen su rendimiento.
 
-Se solicita decidir si se acepta miniaudio como candidato elegido y se traslada la validación física de Windows y Linux a F3.6, dejando explícita esa deuda en la puerta F0. Sin esa aprobación, F0.11 permanece sin marcar en `docs/plan.md`.
+El propietario aprobó miniaudio como salida de audio y autorizó trasladar la reproducción y medición física de Windows y Linux a F3.6. Esta aprobación no convierte los tiempos de llamada API en latencia acústica ni demuestra todavía el objetivo de 20 ms.

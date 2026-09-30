@@ -78,10 +78,11 @@
 - `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 32 pruebas, sin fallos ni omisiones. La matriz CI pasó en los tres sistemas: https://github.com/KMemphis/Tessitura/actions/runs/36651569950.
 - Pendiente: F0.11, comparar las opciones de salida de audio.
 
-## 2026-09-29 · F0.11 Salida de audio (en curso)
+## 2026-09-29 · F0.11 Salida de audio
 
 - Se detectó que OpenAL Soft usa LGPL 2 o posterior, en conflicto con la regla anterior de licencias. El propietario autorizó LGPL también para el producto; se actualizaron `AGENTS.md` y la definición.
 - Se añadió un SoundFont MIT solo para pruebas, una prueba que verifica que MeltySynth produce señal, y un ejecutable experimental para OpenAL Soft y miniaudio.
 - En el Mac arm64 ambos candidatos iniciaron reproducción cinco veces sin errores. Las medianas de retorno de la llamada API fueron 0,048 ms (OpenAL Soft) y 0,056 ms (miniaudio); el primer callback de miniaudio llegó a los 8,204 ms. Ningún valor mide la llegada del sonido al altavoz.
 - El informe `docs/decisiones/audio.md` recomienda provisionalmente miniaudio y solicita decidir si se traslada la medición física de Windows y Linux a F3.6, ya que el propietario solo dispone de este Mac.
-- `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 33 pruebas, sin fallos ni omisiones. [CI #36653006026](https://github.com/KMemphis/Tessitura/actions/runs/36653006026) pasó en Windows, macOS y Ubuntu. F0.11 sigue sin marcar a la espera de la decisión y de la validación física pendiente.
+- `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 33 pruebas, sin fallos ni omisiones. [CI #36653006026](https://github.com/KMemphis/Tessitura/actions/runs/36653006026) pasó en Windows, macOS y Ubuntu.
+- El propietario aprobó miniaudio y trasladó la reproducción y medición física de Windows/Linux a F3.6. Se marcó F0.11 como terminada; sigue pendiente demostrar el objetivo de latencia en hardware. Siguiente tarea: F0.12, decisión sobre MIDI.

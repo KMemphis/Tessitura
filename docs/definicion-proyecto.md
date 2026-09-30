@@ -328,7 +328,7 @@ La reproducción convierte la partitura en una interpretación y la envía a un 
 2. **Secuenciador:** lista ordenada de eventos con tiempo en muestras, reprogramable si el usuario edita mientras suena.
 3. **Salida:**
    - Sintetizador interno con SoundFont `.sf2` mediante MeltySynth (C# puro, licencia MIT).
-   - Salida de audio multiplataforma detrás de una interfaz `IAudioOutput` (candidatos: OpenAL Soft con Silk.NET o un enlace a miniaudio).
+   - Salida de audio multiplataforma detrás de una interfaz `IAudioOutput` con miniaudio, elegida en F0.11.
    - Entrada y salida MIDI detrás de `IMidiPort` (candidato: DryWetMIDI, que en Linux requiere validación).
 4. **Sincronización:** la UI lee la posición del reloj de audio en cada fotograma, mueve la cabeza de reproducción y desplaza la vista si hace falta.
 
@@ -381,7 +381,7 @@ Las dependencias propuestas son de código abierto. Se permiten MIT, BSD, Apache
 | Serialización | System.Text.Json con generadores; `XmlReader` para MusicXML | Rápido y compatible con recorte |
 | Sintetizador | MeltySynth | SoundFont en C# puro |
 | MIDI | DryWetMIDI (a validar en Linux) | API completa de archivos y dispositivos |
-| Salida de audio | OpenAL Soft (Silk.NET) o miniaudio, a decidir en la fase 0 | Multiplataforma, baja latencia |
+| Salida de audio | miniaudio, elegido en F0.11 | Multiplataforma, baja latencia; validación física Windows/Linux en F3.6 |
 | Pruebas | xUnit, Verify, FsCheck, BenchmarkDotNet | Unitarias, instantáneas, propiedades y rendimiento |
 | Instaladores y actualizaciones | Velopack | Un solo flujo para Windows, macOS y Linux |
 | Integración continua | GitHub Actions, matriz de 3 sistemas operativos | Compila y prueba en cada plataforma |
