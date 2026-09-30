@@ -22,9 +22,9 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F0.9 · Ventana y ScoreCanvas.** Ventana Avalonia con un control propio que dibuja con `ICustomDrawOperation` e `ISkiaSharpApiLeaseFeature`, con zoom (`Ctrl+rueda`) y desplazamiento. *Hecho cuando:* se ve una página A4 blanca con sombra y el zoom es fluido.
 - [x] **F0.10 · Primer dibujo musical.** Dibujar a mano, sin motor de grabado, un pentagrama con clave de sol, una negra con plica y un sostenido usando solo métricas SMuFL. *Hecho cuando:* la plica encaja en el anclaje y hay capturas de las tres plataformas en la bitácora.
 - [x] **F0.11 · Decisión: salida de audio.** Tocar una nota con MeltySynth usando OpenAL Soft (Silk.NET) y usando miniaudio, en los tres sistemas, midiendo latencia. *Hecho cuando:* existe `docs/decisiones/audio.md` con la comparación y una recomendación; el agente se detiene. **Decisión aprobada:** miniaudio; reproducción y medición física en Windows/Linux trasladadas a F3.6 por aprobación del 29 de septiembre de 2026.
-- [ ] **F0.12 · Decisión: MIDI.** Listar dispositivos y recibir notas con DryWetMIDI en los tres sistemas, con alternativa para Linux si falla. *Hecho cuando:* existe `docs/decisiones/midi.md` con resultados; el agente se detiene.
+- [x] **F0.12 · Decisión: MIDI.** Listar dispositivos y recibir notas con DryWetMIDI en los tres sistemas, con alternativa para Linux si falla. *Hecho cuando:* existe `docs/decisiones/midi.md` con resultados; el agente se detiene. **Decisión aprobada:** DryWetMIDI en Windows/macOS y adaptador ALSA en Linux; las pruebas con teclado físico en Windows/Linux se trasladan a F3.9 por aprobación del 29 de septiembre de 2026.
 
-**Puerta F0:** una nota con plica y alteración dibujada con métricas exactas en las tres plataformas, CI en verde, y las decisiones de audio y MIDI tomadas.
+**Puerta F0:** una nota con plica y alteración dibujada con métricas exactas en las tres plataformas, CI en verde, y las decisiones de audio y MIDI tomadas. La validación física de audio y MIDI en Windows/Linux, autorizada para F3.6 y F3.9 respectivamente, queda explícitamente pendiente.
 
 ## F1 · Motor de grabado v0 (semanas 7–16)
 
@@ -75,7 +75,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [ ] **F3.6 · Secuenciador y audio.** Secuenciador en muestras, `IAudioOutput` con miniaudio, MeltySynth y un SoundFont con licencia libre incluido. *Hecho cuando:* suena la partitura de referencia sin cortes y el hilo de audio no asigna memoria; además, se comprueban reproducción y latencia física en Windows y Linux y el búfer objetivo inferior a 20 ms.
 - [ ] **F3.7 · Cabeza de reproducción.** Transporte, `Espacio`, cursor sincronizado con el reloj de audio y seguimiento de la vista. *Hecho cuando:* el desfase entre cursor y sonido es inferior a un fotograma.
 - [ ] **F3.8 · Mezclador.** Volumen, panorama, silencio y solo por instrumento, y programa General MIDI automático. *Hecho cuando:* cada control actúa en tiempo real.
-- [ ] **F3.9 · MIDI de dispositivos.** Salida MIDI externa y entrada MIDI paso a paso con `IMidiPort`. *Hecho cuando:* un teclado MIDI escribe acordes en el modo de entrada.
+- [ ] **F3.9 · MIDI de dispositivos.** Salida MIDI externa y entrada MIDI paso a paso con `IMidiPort`, usando DryWetMIDI en Windows/macOS y un adaptador ALSA en Linux. *Hecho cuando:* un teclado MIDI escribe acordes en el modo de entrada y se comprueban enumeración, recepción, envío y desconexión con dispositivos físicos en Windows y Linux.
 - [ ] **F3.10 · Exportación SVG y PNG.** `SKSvgCanvas` y `SKSurface` con resolución elegible. *Hecho cuando:* ambas coinciden con el PDF en las imágenes de referencia.
 
 **Puerta F3:** 90 % del corpus MusicXML de ida y vuelta sin pérdidas, y la partitura de referencia suena con el cursor sincronizado.

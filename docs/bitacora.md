@@ -87,10 +87,10 @@
 - `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 33 pruebas, sin fallos ni omisiones. [CI #36653006026](https://github.com/KMemphis/Tessitura/actions/runs/36653006026) pasó en Windows, macOS y Ubuntu.
 - El propietario aprobó miniaudio y trasladó la reproducción y medición física de Windows/Linux a F3.6. Se marcó F0.11 como terminada; sigue pendiente demostrar el objetivo de latencia en hardware. Siguiente tarea: F0.12, decisión sobre MIDI.
 
-## 2026-09-29 · F0.12 Dispositivos MIDI (en curso)
+## 2026-09-29 · F0.12 Dispositivos MIDI
 
 - Se añadió DryWetMIDI 8.0.3 para una prueba de enumeración y recepción. En este Mac no hay puertos físicos; un puerto virtual de CoreMIDI recibió Do4 en canal 2 con velocidad 100.
-- La documentación oficial de DryWetMIDI excluye Linux de su API de dispositivos. `docs/decisiones/midi.md` propone un adaptador ALSA detrás de `IMidiPort`, sujeto a aprobación como nueva dependencia de sistema.
+- La documentación oficial de DryWetMIDI excluye Linux de su API de dispositivos. `docs/decisiones/midi.md` propone un adaptador ALSA detrás de `IMidiPort`; el propietario aprobó esta nueva dependencia de sistema.
 - La primera CI enumeró correctamente Windows (sin entradas, con salida Microsoft GS Wavetable Synth) y recibió la nota de loopback en macOS; Ubuntu confirmó ausencia de backend nativo DryWetMIDI. Se corrigió el diagnóstico para dejarlo explícito sin fallar la matriz por esa incompatibilidad prevista.
 - [CI #36654098552](https://github.com/KMemphis/Tessitura/actions/runs/36654098552) pasó en los tres sistemas. Ubuntu informó `Supported=false`, Windows enumeró una salida y macOS recibió la nota virtual. `dotnet build` local terminó con 0 advertencias y 0 errores; `dotnet test` pasó 34 pruebas sin fallos ni omisiones.
-- Queda pendiente la decisión sobre el adaptador ALSA como dependencia de sistema y las pruebas físicas diferidas; F0.12 sigue sin marcar.
+- El propietario eligió DryWetMIDI para Windows/macOS y ALSA para Linux. Las pruebas con teclado físico en Windows/Linux se trasladaron a F3.9; el adaptador ALSA aún no está implementado. F0.12 queda cerrada y sigue la puerta F0, pendiente de aprobación antes de F1.1.

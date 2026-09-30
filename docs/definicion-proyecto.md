@@ -329,7 +329,7 @@ La reproducción convierte la partitura en una interpretación y la envía a un 
 3. **Salida:**
    - Sintetizador interno con SoundFont `.sf2` mediante MeltySynth (C# puro, licencia MIT).
    - Salida de audio multiplataforma detrás de una interfaz `IAudioOutput` con miniaudio, elegida en F0.11.
-   - Entrada y salida MIDI detrás de `IMidiPort` (candidato: DryWetMIDI, que en Linux requiere validación).
+   - Entrada y salida MIDI detrás de `IMidiPort`: DryWetMIDI en Windows/macOS y adaptador al secuenciador de ALSA (`alsa-lib`) en Linux, elegidos en F0.12. La validación con dispositivos físicos en Windows/Linux corresponde a F3.9.
 4. **Sincronización:** la UI lee la posición del reloj de audio en cada fotograma, mueve la cabeza de reproducción y desplaza la vista si hace falta.
 
 El mezclador ofrece por instrumento volumen, panorama, silencio y solo, y el sonido de cada instrumento se asigna automáticamente a su programa General MIDI. La latencia objetivo del búfer es inferior a 20 ms.
@@ -380,7 +380,7 @@ Las dependencias propuestas son de código abierto. Se permiten MIT, BSD, Apache
 | Inyección y registro | Microsoft.Extensions.DependencyInjection y Logging | Estándar en .NET |
 | Serialización | System.Text.Json con generadores; `XmlReader` para MusicXML | Rápido y compatible con recorte |
 | Sintetizador | MeltySynth | SoundFont en C# puro |
-| MIDI | DryWetMIDI (a validar en Linux) | API completa de archivos y dispositivos |
+| MIDI | DryWetMIDI; `alsa-lib` para dispositivos en Linux | Archivos MIDI y dispositivos Windows/macOS con DryWetMIDI; puertos Linux mediante adaptador `IMidiPort` a ALSA |
 | Salida de audio | miniaudio, elegido en F0.11 | Multiplataforma, baja latencia; validación física Windows/Linux en F3.6 |
 | Pruebas | xUnit, Verify, FsCheck, BenchmarkDotNet | Unitarias, instantáneas, propiedades y rendimiento |
 | Instaladores y actualizaciones | Velopack | Un solo flujo para Windows, macOS y Linux |
@@ -454,6 +454,7 @@ El mayor riesgo es subestimar el motor de grabado; por eso se construye primero 
 | CommunityToolkit.Mvvm, MeltySynth, DryWetMIDI, Velopack | MIT | Incluir los avisos de copyright |
 | Bravura y fuente de texto | SIL OFL 1.1 | Se pueden incrustar y distribuir; no vender la fuente por separado |
 | OpenAL Soft, si se elige | LGPL 2 o posterior | Documentar y cumplir las obligaciones de distribución antes del lanzamiento |
+| `alsa-lib` (adaptador Linux aprobado en F0.12) | LGPL 2.1 o posterior | Documentar y cumplir las obligaciones de distribución antes del lanzamiento |
 | Especificación MusicXML | Licencia de especificación del W3C Community Group | Libre de implementar |
 
 Si la aplicación va a ser propietaria, no se puede copiar código de MuseScore (GPL); sí se puede estudiar su diseño y documentación. Queda abierta la decisión de la licencia de Tessitura: propietaria, de código abierto o mixta (núcleo abierto con funciones profesionales de pago).

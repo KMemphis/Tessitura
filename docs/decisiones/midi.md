@@ -1,6 +1,6 @@
 # F0.12 · Dispositivos MIDI
 
-Fecha: 29 de septiembre de 2026. Estado: **decisión pendiente**. [CI de verificación](https://github.com/KMemphis/Tessitura/actions/runs/36654098552): verde en Windows, macOS y Ubuntu.
+Fecha: 29 de septiembre de 2026. Estado: **aprobada por el propietario**. [CI de verificación](https://github.com/KMemphis/Tessitura/actions/runs/36654098552): verde en Windows, macOS y Ubuntu.
 
 ## Prueba reproducible
 
@@ -27,8 +27,8 @@ La [documentación de plataformas de DryWetMIDI](https://melanchall.github.io/dr
 
 `dotnet build` terminó con cero advertencias y errores; `dotnet test` pasó 34 pruebas sin fallos ni omisiones. En CI también pasaron compilación y pruebas en los tres sistemas, enumeración en Windows/macOS y recepción virtual en macOS. Ubuntu informó de forma estructurada la incompatibilidad conocida.
 
-## Recomendación y decisión solicitada
+## Decisión aprobada
 
-Recomiendo DryWetMIDI para archivos MIDI y para puertos en Windows/macOS, con un adaptador ALSA detrás de `IMidiPort` en Linux. Esta recomendación queda condicionada a probar dispositivos físicos en Windows y Linux. El propietario indicó que solo dispone de este Mac; los runners de CI no sustituyen un teclado MIDI.
+Se eligió DryWetMIDI para archivos MIDI y para puertos en Windows/macOS, con un adaptador ALSA detrás de `IMidiPort` en Linux. El propietario indicó que solo dispone de este Mac; los runners de CI no sustituyen un teclado MIDI.
 
-Se solicita aprobar el adaptador ALSA como dependencia de sistema y trasladar las pruebas físicas de Windows/Linux a F3.9. F0.12 permanece sin marcar hasta esa decisión.
+El propietario aprobó `alsa-lib` como dependencia de sistema y trasladó las pruebas con teclado físico en Windows/Linux a F3.9. El adaptador aún no está implementado; F3.9 deberá comprobar enumeración, recepción, envío y desconexión en esos sistemas.
