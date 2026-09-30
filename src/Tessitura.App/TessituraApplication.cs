@@ -1,8 +1,10 @@
+using System.Collections.Immutable;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Tessitura.Rendering;
 using Tessitura.Smufl;
+using Tessitura.Core;
 
 namespace Tessitura.App;
 
@@ -19,12 +21,13 @@ public sealed class TessituraApplication : Application
                 Path.Combine(assets, "Bravura.json"),
                 Path.Combine(assets, "smufl_glyph_names.json"));
             MusicPreviewRenderer music = new(Path.Combine(assets, "Bravura.otf"), metadata);
-            ScoreCanvas canvas = new(music);
+            ScoreInputController scoreInput = new(CreateInitialScore());
+            ScoreCanvas canvas = new(music) { ScoreInputController = scoreInput };
             string settingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Tessitura",
                 "shortcuts.json");
-            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+            List<ActionDefinition> actionDefinitions =
             [
                 new ActionDefinition(
                     "view.zoom-in", "Aumentar zoom", "Ctrl+Plus", () => canvas.ZoomBy(1.1)),
@@ -32,11 +35,12 @@ public sealed class TessituraApplication : Application
                     "view.zoom-out", "Reducir zoom", "Ctrl+Minus", () => canvas.ZoomBy(1 / 1.1)),
                 new ActionDefinition(
                     "view.fit-page", "Ajustar página", "Ctrl+0", canvas.FitPage),
-            ],
-            settingsPath);
+            ];
+            actionDefinitions.AddRange(scoreInput.CreateActions());
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(actionDefinitions, settingsPath);
             canvas.AttachActionRegistry(actions);
             desktop.Exit += (_, _) => music.Dispose();
-            desktop.MainWindow = new Window
+            Window mainWindow = new()
             {
                 Title = "Tessitura",
                 Width = 1000,
@@ -45,8 +49,22 @@ public sealed class TessituraApplication : Application
                 MinHeight = 500,
                 Content = canvas,
             };
+            mainWindow.Opened += (_, _) => canvas.Focus();
+            desktop.MainWindow = mainWindow;
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static Score CreateInitialScore()
+    {
+        Measure measure = new(1, new TimeSignature(4, 4));
+        Rest rest = new(new EventId(Guid.NewGuid()), Fraction.Zero, new Duration(NoteValue.Whole, 0));
+        StaffMeasure content = new([new Voice(1, [rest])]);
+        return new Score(
+            new ScoreMetadata("Sin título", ""),
+            [new Instrument("Piano", [new Staff("Pentagrama superior")])],
+            [measure],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0), content));
     }
 }

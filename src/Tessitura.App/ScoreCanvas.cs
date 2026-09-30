@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
 using SkiaSharp;
+using Tessitura.Core;
 using Tessitura.Rendering;
 
 namespace Tessitura.App;
@@ -14,6 +15,7 @@ public sealed class ScoreCanvas : Control
 {
     private readonly MusicPreviewRenderer? _musicPreview;
     private ActionRegistry? _actionRegistry;
+    private ScoreInputController? _scoreInputController;
     private Point? _dragPointer;
     private bool _userAdjusted;
 
@@ -38,6 +40,32 @@ public sealed class ScoreCanvas : Control
 
     /// <summary>Gets the page offset in view coordinates.</summary>
     public Vector PanOffset { get; private set; }
+
+    /// <summary>Gets or sets the musical input controller shown on this canvas.</summary>
+    public ScoreInputController? ScoreInputController
+    {
+        get => _scoreInputController;
+        set
+        {
+            if (ReferenceEquals(_scoreInputController, value))
+            {
+                return;
+            }
+
+            if (_scoreInputController is not null)
+            {
+                _scoreInputController.StateChanged -= OnScoreInputStateChanged;
+            }
+
+            _scoreInputController = value;
+            if (_scoreInputController is not null)
+            {
+                _scoreInputController.StateChanged += OnScoreInputStateChanged;
+            }
+
+            InvalidateVisual();
+        }
+    }
 
     /// <summary>Converts a view point into unscaled page coordinates.</summary>
     public Point ViewToPage(Point viewPoint) => new(
@@ -97,6 +125,14 @@ public sealed class ScoreCanvas : Control
     public override void Render(DrawingContext context)
     {
         context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _musicPreview));
+        if (_scoreInputController is { Mode: ScoreInputMode.NoteEntry } inputController)
+        {
+            context.Custom(new CursorDrawOperation(
+                new Rect(Bounds.Size),
+                Zoom,
+                PanOffset,
+                GetCursorPagePoint(inputController)));
+        }
     }
 
     /// <inheritdoc />
@@ -178,6 +214,56 @@ public sealed class ScoreCanvas : Control
         InvalidateVisual();
     }
 
+    private static Point GetCursorPagePoint(ScoreInputController controller)
+    {
+        Score score = controller.CurrentScore;
+        ScoreInputCursor cursor = controller.Cursor;
+        Fraction measureStart = Fraction.Zero;
+        int measureIndex = Math.Max(0, score.Measures.Length - 1);
+        Fraction measurePosition = Fraction.Zero;
+        Fraction measureLength = new(1, 1);
+        bool found = false;
+
+        for (int index = 0; index < score.Measures.Length; index++)
+        {
+            Fraction currentLength = score.Measures[index].TimeSignature.Length;
+            Fraction measureEnd = measureStart + currentLength;
+            if (cursor.Position < measureEnd || index == score.Measures.Length - 1)
+            {
+                measureIndex = index;
+                measureLength = currentLength;
+                measurePosition = cursor.Position - measureStart;
+                if (measurePosition < Fraction.Zero)
+                {
+                    measurePosition = Fraction.Zero;
+                }
+                else if (measurePosition > measureLength)
+                {
+                    measurePosition = measureLength;
+                }
+
+                found = true;
+                break;
+            }
+
+            measureStart = measureEnd;
+        }
+
+        if (!found && score.Measures.IsDefaultOrEmpty)
+        {
+            measurePosition = Fraction.Zero;
+        }
+
+        double beatPosition = (double)measurePosition.Num / measurePosition.Den;
+        double beatsInMeasure = (double)measureLength.Num / measureLength.Den;
+        double measureFraction = beatsInMeasure == 0 ? 0 : beatPosition / beatsInMeasure;
+        double x = 250 + (measureIndex % 4) * 74 + measureFraction * 74;
+        double y = 190 + cursor.StaffIndex * 90;
+        return new Point(x, y);
+    }
+
+    private void OnScoreInputStateChanged(object? sender, EventArgs args) => InvalidateVisual();
+
     private sealed class PageDrawOperation(
         Rect bounds,
         double zoom,
@@ -200,6 +286,51 @@ public sealed class ScoreCanvas : Control
         }
 
         public bool HitTest(Point point) => Bounds.Contains(point);
+
+        public bool Equals(ICustomDrawOperation? other) => false;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CursorDrawOperation(
+        Rect bounds,
+        double zoom,
+        Vector panOffset,
+        Point pagePoint) : ICustomDrawOperation
+    {
+        public Rect Bounds { get; } = bounds;
+
+        public void Render(ImmediateDrawingContext context)
+        {
+            ISkiaSharpApiLeaseFeature? feature = context.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+            if (feature is null)
+            {
+                return;
+            }
+
+            using ISkiaSharpApiLease lease = feature.Lease();
+            SKCanvas canvas = lease.SkCanvas;
+            canvas.Save();
+            canvas.Translate((float)panOffset.X, (float)panOffset.Y);
+            canvas.Scale((float)zoom);
+            using SKPaint paint = new()
+            {
+                Color = new SKColor(26, 132, 214),
+                StrokeWidth = 1.5f,
+                IsAntialias = true,
+            };
+            canvas.DrawLine(
+                (float)pagePoint.X,
+                (float)pagePoint.Y - 14,
+                (float)pagePoint.X,
+                (float)pagePoint.Y + 50,
+                paint);
+            canvas.Restore();
+        }
+
+        public bool HitTest(Point point) => false;
 
         public bool Equals(ICustomDrawOperation? other) => false;
 

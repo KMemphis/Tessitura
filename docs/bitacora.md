@@ -223,3 +223,11 @@
 - Las duraciones que cruzan una barra se dividen en segmentos con ligadura entre sus notas. Si el último compás no alcanza, se amplía la partitura y se crean compases de silencios para los otros pentagramas. Los silencios se reescriben en valores que respetan los pulsos; 6/8 usa pulsos de negra con puntillo.
 - Cinco pruebas cubren acortamiento, desplazamiento de notas, cruce de barra, ampliación multipentagrama y silencios en 6/8. La prueba FsCheck verifica la invariante de cada voz después de cada comando generado. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 138 pruebas, sin fallos ni omisiones.
 - Siguiente tarea: F2.4, cursor y modo de entrada.
+
+## 2026-09-30 · F2.4 Cursor y modo de entrada
+
+- Se añadió el controlador de entrada con cursor musical en `Fraction`, modo de selección y entrada, elección de la octava diatónica más cercana, y acciones registradas para notas, duraciones, puntillo, silencios, transposición, ligadura y deshacer/rehacer. Al agotar el compás, el comando añade uno nuevo con silencios para todas las voces.
+- `ScoreCanvas` dibuja el cursor como una operación superpuesta independiente y recibe foco al abrirse la ventana. Una prueba de acciones de teclado escribió Do mayor a través de dos compases y validó la invariante; otras cubren `N`/`Esc`, duración con puntillo, octava y restauración del cursor al deshacer/rehacer.
+- La ventana de Tessitura se abrió y se capturó por identificador de su proceso (sin captura de pantalla completa); tras enviar la secuencia de teclado, el cursor avanzó en la ventana. La partitura visible sigue siendo el ejemplo provisional hasta conectar la maquetación y el repintado en F2.6.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 144 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.5, detección de clics y selección.

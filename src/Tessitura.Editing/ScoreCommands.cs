@@ -4,7 +4,7 @@ using Tessitura.Core;
 namespace Tessitura.Editing;
 
 /// <summary>Adds a written pitch to a chord or replaces a rest with a note.</summary>
-public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch) : IScoreCommand
+public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch, Duration? Duration = null) : IScoreCommand
 {
     /// <inheritdoc />
     public string Description => "Insert note";
@@ -17,9 +17,76 @@ public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch) : IScoreCom
         musicEvent => musicEvent switch
         {
             Chord chord => chord with { Notes = chord.Notes.Add(new Note(Pitch)) },
-            Rest rest => new Chord(rest.Id, rest.Onset, rest.Duration, [new Note(Pitch)], StemDirection.Auto),
+            Rest rest => new Chord(rest.Id, rest.Onset, Duration ?? rest.Duration, [new Note(Pitch)], StemDirection.Auto),
             _ => throw new InvalidOperationException("The target event cannot contain a note."),
         });
+}
+
+/// <summary>Adds a new measure after the score's current final measure.</summary>
+public sealed record AppendMeasureCommand : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Append measure";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (score.Measures.IsDefaultOrEmpty)
+        {
+            throw new InvalidOperationException("A measure cannot be appended to an empty score.");
+        }
+
+        Measure previousMeasure = score.Measures[^1];
+        Measure nextMeasure = previousMeasure with { Number = previousMeasure.Number + 1 };
+        ImmutableArray<Measure> measures = score.Measures.Add(nextMeasure);
+        ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content = score.Content.ToBuilder();
+        int staffCount = 0;
+        foreach (Instrument instrument in score.Instruments)
+        {
+            staffCount = checked(staffCount + instrument.Staves.Length);
+        }
+
+        NoteValue unit = (NoteValue)nextMeasure.TimeSignature.Denominator;
+        if (!Enum.IsDefined(unit))
+        {
+            throw new InvalidOperationException(
+                $"Cannot append a measure with denominator {nextMeasure.TimeSignature.Denominator}.");
+        }
+
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            StaffMeasureKey previousKey = new(staffIndex, score.Measures.Length - 1);
+            if (!score.Content.TryGetValue(previousKey, out StaffMeasure? previousContent))
+            {
+                throw new InvalidOperationException($"Staff {staffIndex} is missing content in the final measure.");
+            }
+
+            ImmutableArray<Voice>.Builder voices = ImmutableArray.CreateBuilder<Voice>(previousContent.Voices.Length);
+            foreach (Voice previousVoice in previousContent.Voices)
+            {
+                ImmutableArray<MusicEvent>.Builder rests =
+                    ImmutableArray.CreateBuilder<MusicEvent>(nextMeasure.TimeSignature.Numerator);
+                Fraction onset = Fraction.Zero;
+                for (int beat = 0; beat < nextMeasure.TimeSignature.Numerator; beat++)
+                {
+                    rests.Add(new Rest(
+                        new EventId(Guid.NewGuid()),
+                        onset,
+                        new Duration(unit, 0)));
+                    onset += new Fraction(1, nextMeasure.TimeSignature.Denominator);
+                }
+
+                voices.Add(new Voice(previousVoice.Number, rests.MoveToImmutable()));
+            }
+
+            content.Add(
+                new StaffMeasureKey(staffIndex, measures.Length - 1),
+                new StaffMeasure(voices.MoveToImmutable()));
+        }
+
+        return score with { Measures = measures, Content = content.ToImmutable() };
+    }
 }
 
 /// <summary>Removes a note from a chord, replacing its last note with a rest.</summary>
