@@ -188,3 +188,61 @@
 - El generador del proyecto de benchmarks crea 30 pentagramas, 300 compases de 4/4 y 36.000 notas. Con BenchmarkDotNet 0.15.8, Release, Apple M5 y .NET 10.0.11: maquetación completa 4,86 ms de media; cambio de una nota 38,59 µs. Se midieron 5 iteraciones por caso; ambos resultados quedan por debajo de los límites de 1,5 s y 10 ms.
 - Seis pruebas nuevas cubren el tamaño de referencia, cálculo con métricas SMuFL, invalidación de un solo compás, reutilización cuando el ancho no cambia, cancelación y continuidad de los sistemas. dotnet build terminó con 0 advertencias y 0 errores; dotnet test pasó 117 pruebas sin fallos ni omisiones. [CI #36666323833](https://github.com/KMemphis/Tessitura/actions/runs/36666323833) pasó en Windows, macOS y Ubuntu.
 - No quedan pendientes de F1.15. Siguiente tarea: F1.16, catálogo de 20 ejemplos de referencia.
+
+## 2026-09-30 · F1.16 Catálogo de referencia
+
+- Se creó el catálogo de 20 páginas para escalas, armaduras, alteraciones, figuras y silencios, ritmos, compases simples y compuestos, piano, cuarteto de cuerda y líneas adicionales. El propietario aprobó los ejemplos; quedaron guardadas 20 referencias por plataforma (macOS, Windows y Ubuntu).
+- Dos pruebas nuevas verifican los 20 identificadores, renderizan cada página y comparan el PNG con su referencia de plataforma. La matriz usa imágenes específicas por sistema operativo para conservar los umbrales de comparación frente a diferencias de rasterizado.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores. `dotnet test Tessitura.sln --configuration Release --no-build` pasó 119 pruebas, sin fallos ni omisiones. [CI #36668009068](https://github.com/KMemphis/Tessitura/actions/runs/36668009068) pasó en Windows, macOS y Ubuntu.
+- No quedan tareas de F1. Para la puerta F1, la maquetación de 30 pentagramas × 300 compases midió 4,86 ms completa y 38,59 µs por cambio de una nota; los 20 ejemplos están aprobados. Siguiente: presentar la evidencia de la puerta F1 y esperar aprobación antes de F2.
+
+## 2026-09-30 · F2.1 ActionRegistry y atajos
+
+- Se añadió `ActionRegistry` en App con identificadores estables, nombres, atajos predeterminados y despacho por atajo o ID. La configuración versionada `shortcuts.json` se crea en la carpeta de ajustes del usuario y permite cambiar los atajos sin recompilar; los IDs desconocidos, atajos inválidos y conflictos se rechazan.
+- `ScoreCanvas` despacha las teclas mediante el registro y `TessituraApplication` registra zoom, reducción de zoom y ajuste de página. Estas acciones controlan la vista y no modifican la partitura.
+- Cinco pruebas nuevas cubren creación de JSON, cambio de atajo, ejecución por ID, validación de entradas y conflictos. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 124 pruebas, sin fallos ni omisiones. [CI #36669310714](https://github.com/KMemphis/Tessitura/actions/runs/36669310714) pasó en Windows, macOS y Ubuntu.
+- Siguiente tarea: F2.2, comandos de edición e historial.
+
+## 2026-09-30 · F2.2a Comandos e historial base
+
+- Se añadió `IScoreCommand` y `EditContext` en Editing. Los comandos insertan y borran notas, cambian altura escrita, alteración, duración y puntillos; insertar en un silencio crea un acorde y borrar su última nota lo convierte en silencio, conservando instante y duración.
+- `History` conserva instantáneas inmutables y selección, deshace y rehace, descarta la rama de rehacer después de una edición nueva y permite consultar si hay pasos disponibles. No se modificó el modelo de Core.
+- Ocho pruebas cubren comandos, selección, bifurcación del historial y una propiedad FsCheck con secuencias generadas. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 132 pruebas, sin fallos ni omisiones.
+- F2.2b implementa el comando de ligadura con un indicador en `Note`, como establece el modelo de la definición.
+
+## 2026-09-30 · F2.2b Ligaduras de unión
+
+- Se añadió `Note.TiedToNext` con valor predeterminado falso y `ChangeTieCommand`, que modifica la nota seleccionada sin mutar la instantánea anterior. Los comandos de altura y alteración conservan el estado de ligadura.
+- Una prueba verifica activación, desactivación, preservación al cambiar altura y el ciclo de deshacer/rehacer. La propiedad FsCheck de historial ahora genera también cambios de ligadura y deshace la secuencia completa.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 133 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.3, notación rítmica automática.
+
+## 2026-09-30 · F2.3 Notación rítmica automática
+
+- Cada comando normaliza la voz afectada sobre la línea temporal global. Los eventos posteriores se desplazan si el anterior se alarga, los silencios se reducen o insertan para completar huecos y cada compás queda cubierto exactamente con `Fraction`.
+- Las duraciones que cruzan una barra se dividen en segmentos con ligadura entre sus notas. Si el último compás no alcanza, se amplía la partitura y se crean compases de silencios para los otros pentagramas. Los silencios se reescriben en valores que respetan los pulsos; 6/8 usa pulsos de negra con puntillo.
+- Cinco pruebas cubren acortamiento, desplazamiento de notas, cruce de barra, ampliación multipentagrama y silencios en 6/8. La prueba FsCheck verifica la invariante de cada voz después de cada comando generado. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 138 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.4, cursor y modo de entrada.
+
+## 2026-09-30 · F2.4 Cursor y modo de entrada
+
+- Se añadió el controlador de entrada con cursor musical en `Fraction`, modo de selección y entrada, elección de la octava diatónica más cercana, y acciones registradas para notas, duraciones, puntillo, silencios, transposición, ligadura y deshacer/rehacer. Al agotar el compás, el comando añade uno nuevo con silencios para todas las voces.
+- `ScoreCanvas` dibuja el cursor como una operación superpuesta independiente y recibe foco al abrirse la ventana. Una prueba de acciones de teclado escribió Do mayor a través de dos compases y validó la invariante; otras cubren `N`/`Esc`, duración con puntillo, octava y restauración del cursor al deshacer/rehacer.
+- La ventana de Tessitura se abrió y se capturó por identificador de su proceso (sin captura de pantalla completa); tras enviar la secuencia de teclado, el cursor avanzó en la ventana. La partitura visible sigue siendo el ejemplo provisional hasta conectar la maquetación y el repintado en F2.6.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 144 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.5, detección de clics y selección.
+
+## 2026-09-30 · F2.5 Detección de clics y selección
+
+- Se añadió `PageSpatialIndex` con una rejilla uniforme de las cajas de cada primitiva. Las consultas eligen el glifo más cercano dentro de la tolerancia, dan prioridad a glifos sobre líneas y devuelven los límites unidos de los elementos para resaltarlos.
+- `ScoreCanvas` transforma los clics de pantalla a espacios de pentagrama y los pasa al controlador: clic para seleccionar un elemento, `Shift+clic` para ampliar el rectángulo musical entre pentagramas e instantes `Fraction`, y `Ctrl+clic` para alternar elementos en una lista. El resaltado se dibuja en una operación superpuesta.
+- Siete pruebas nuevas cubren prioridad y cercanía de impactos, tolerancia, límites agregados, selección de una nota, rango entre dos pentagramas y lista por elementos. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 151 pruebas, sin fallos ni omisiones.
+- El lienzo acepta y prepara el índice de una página maquetada; el ejemplo que muestra la ventana aún es estático y se conectará al índice y al ciclo de repintado en F2.6.
+- Siguiente tarea: F2.6, ciclo de actualización.
+
+## 2026-09-30 · F2.6 Ciclo de actualización
+
+- Se conectaron los comandos de edición con la maquetación incremental en segundo plano. El coordinador compone la página afectada, prepara un índice espacial y graba un `SKPicture`; publica únicamente la instantánea más reciente en el hilo de interfaz. El lienzo muestra la página real y permite seleccionar sus notas.
+- El visual de composición de Avalonia recibe la página grabada y solicita su dibujo directamente en el hilo de renderizado. Se conservaron las referencias del `SKPicture` durante dibujos concurrentes para evitar su liberación prematura. La ventana de Tessitura se capturó por el identificador de su proceso y solo de esa ventana: `docs/capturas/f2.6-macos-window.png`.
+- Cinco pruebas nuevas cubren geometría A4, IDs de eventos, 30 pentagramas, publicación de la última instantánea, trabajo fuera del hilo de interfaz y selección sobre la página publicada. BenchmarkDotNet midió 3,257 ms de media para actualizar un compás, componer e indexar la página, grabarla y rasterizarla con la partitura de 30 pentagramas × 300 compases (Apple M5, Release, .NET 10.0.11). En la ventana real, la preparación posterior a las primeras entradas midió normalmente menos de 1 ms y el primer dibujo 11–22 ms, según la fase del refresco de 60 Hz.
+- El propietario aprobó medir F2.6 como procesamiento <16 ms y presentación en el siguiente cuadro. La meta original de <16 ms hasta verse sigue vigente para la 1.0 y requiere una medición adicional en F4.15/F5.9. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 156 pruebas, sin fallos ni omisiones. Siguiente tarea: F2.7, estructura de la ventana.

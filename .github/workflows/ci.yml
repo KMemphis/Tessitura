@@ -63,6 +63,15 @@ jobs:
             captures/f1.14-multipage-sample.pdf
             captures/f1.14-screen-page.png
           if-no-files-found: error
+      - name: Upload F1.16 reference catalog candidates
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reference-catalog-${{ matrix.os }}
+          path: |
+            captures/f1.16-*-candidate.png
+            captures/f1.16-contact-sheet.png
+          if-no-files-found: error
       - name: Upload reference differences
         if: failure()
         uses: actions/upload-artifact@v6

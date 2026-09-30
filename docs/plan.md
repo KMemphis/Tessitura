@@ -43,18 +43,19 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F1.13 · Textos de página.** Título, compositor y números de compás con HarfBuzzSharp. *Hecho cuando:* imágenes de referencia de la primera página.
 - [x] **F1.14 · Exportación PDF.** `SKDocument.CreatePdf` con fuentes incrustadas. *Hecho cuando:* el PDF abre en tres visores y coincide con la pantalla.
 - [x] **F1.15 · Maquetación incremental y rendimiento.** Caché de anchos por compás, reflujo limitado, cancelación y un generador de la partitura de referencia (30 pentagramas × 300 compases). *Hecho cuando:* BenchmarkDotNet mide maquetación completa por debajo de 1,5 s y un cambio de una nota por debajo de 10 ms.
-- [ ] **F1.16 · Catálogo de referencia.** 20 ejemplos (escalas, ritmos, armaduras, compases compuestos, piano, cuarteto). *Hecho cuando:* los 20 están aprobados por ti.
+- [x] **F1.16 · Catálogo de referencia.** 20 ejemplos (escalas, ritmos, armaduras, compases compuestos, piano, cuarteto). *Hecho cuando:* los 20 están aprobados por ti.
 
 **Puerta F1:** 20 ejemplos de referencia aprobados y maquetación completa de la partitura de referencia dentro del presupuesto.
 
 ## F2 · Editor MVP (semanas 17–26)
 
-- [ ] **F2.1 · ActionRegistry y atajos.** Registro central de acciones con identificador, nombre y atajo, y atajos configurables en JSON. *Hecho cuando:* cambiar un atajo en el JSON cambia el comportamiento sin recompilar.
-- [ ] **F2.2 · Comandos e historial.** `IScoreCommand`, `History` y los comandos de insertar y borrar nota, cambiar altura, duración, alteración, puntillo y ligadura de unión. *Hecho cuando:* cualquier secuencia de comandos deshecha por completo devuelve una partitura idéntica a la inicial (prueba de propiedades).
-- [ ] **F2.3 · Notación rítmica automática.** Relleno con silencios, división con ligadura al cruzar la barra y reescritura de silencios según el compás. *Hecho cuando:* la invariante de compás se cumple tras cualquier comando.
-- [ ] **F2.4 · Cursor y modo de entrada.** Modo de entrada (`N`, `Esc`), cursor musical en la capa superpuesta, octava más cercana y atajos de la definición. *Hecho cuando:* se escribe una escala de Do mayor solo con el teclado.
-- [ ] **F2.5 · Detección de clics y selección.** Índice espacial por página y selección de elemento, rango y lista. *Hecho cuando:* un clic sobre una cabeza selecciona su nota y `Shift+clic` extiende un rango.
-- [ ] **F2.6 · Ciclo de actualización.** Comando, maquetación en segundo plano, invalidación de páginas y repintado. *Hecho cuando:* escribir una nota en la partitura de referencia tarda menos de 16 ms hasta verse.
+- [x] **F2.1 · ActionRegistry y atajos.** Registro central de acciones con identificador, nombre y atajo, y atajos configurables en JSON. *Hecho cuando:* cambiar un atajo en el JSON cambia el comportamiento sin recompilar.
+- [x] **F2.2a · Comandos e historial base.** `IScoreCommand`, `EditContext`, `Selection`, `History` y los comandos de insertar y borrar nota, cambiar altura, duración, alteración y puntillo. *Hecho cuando:* una prueba de propiedades deshace secuencias de comandos hasta recuperar la partitura inicial; el historial restaura también la selección.
+- [x] **F2.2b · Ligaduras de unión.** Representar la ligadura por nota y añadir el comando para cambiarla, siguiendo el campo `ligadura` de `Notes[]` en el modelo de la definición. *Hecho cuando:* la edición crea una ligadura inmutable y deshacer/rehacer restaura su estado.
+- [x] **F2.3 · Notación rítmica automática.** Relleno con silencios, división con ligadura al cruzar la barra y reescritura de silencios según el compás. *Hecho cuando:* la invariante de compás se cumple tras cualquier comando.
+- [x] **F2.4 · Cursor y modo de entrada.** Modo de entrada (`N`, `Esc`), cursor musical en la capa superpuesta, octava más cercana y atajos de la definición. *Hecho cuando:* se escribe una escala de Do mayor solo con el teclado.
+- [x] **F2.5 · Detección de clics y selección.** Índice espacial por página y selección de elemento, rango y lista. *Hecho cuando:* un clic sobre una cabeza selecciona su nota y `Shift+clic` extiende un rango.
+- [x] **F2.6 · Ciclo de actualización.** Comando, maquetación en segundo plano, invalidación de páginas y repintado. *Hecho cuando (criterio aprobado el 2026-09-30):* el procesamiento de una nota en la partitura de referencia tarda menos de 16 ms y la página se presenta en el siguiente cuadro de composición. La meta original de menos de 16 ms hasta verla permanece en la definición para la versión 1.0.
 - [ ] **F2.7 · Estructura de la ventana.** Barra superior, paneles laterales plegables, barra de estado y temas claro y oscuro. *Hecho cuando:* coincide con la distribución de la definición.
 - [ ] **F2.8 · Inspector.** Propiedades del elemento seleccionado, editables mediante comandos. *Hecho cuando:* cambiar la duración desde el inspector se puede deshacer.
 - [ ] **F2.9 · Paletas básicas.** Claves, armaduras, compases y alteraciones. *Hecho cuando:* cada elemento se aplica a la selección con un clic.
