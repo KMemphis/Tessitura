@@ -42,6 +42,49 @@ public sealed class ScorePageComposerTests
     }
 
     [Fact]
+    public void UsesStaffClefAndKeySignatureForHeaderAndAccidentalPlacement()
+    {
+        SmuflMetadata metadata = LoadMetadata();
+        Style style = Style.CreateDefault(metadata);
+        ScorePageComposer composer = new(metadata, style);
+        EventId sharpNoteId = new(Guid.NewGuid());
+        EventId naturalNoteId = new(Guid.NewGuid());
+        Chord sharpNote = new(sharpNoteId, Fraction.Zero,
+            new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.F, 1, 3))], StemDirection.Auto);
+        Chord naturalNote = new(naturalNoteId, new Fraction(1, 4),
+            new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.F, 0, 3))], StemDirection.Auto);
+        Rest rest = new(new EventId(Guid.NewGuid()), new Fraction(1, 2),
+            new Duration(NoteValue.Half, 0));
+        Score score = new(new ScoreMetadata("Bass", ""),
+            [new Instrument("Bass", [new Staff("Bass", Clef.Bass)])],
+            [new Measure(1, new TimeSignature(4, 4), new KeySignature(2))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
+                new StaffMeasureKey(0, 0), new StaffMeasure([
+                    new Voice(1, [sharpNote, naturalNote, rest])])));
+        IncrementalScoreLayouter layouter = new(metadata);
+        ScoreLayoutResult layout = layouter.Layout(score, style, composer.GetAvailableWidth(score));
+
+        ScorePageComposition composition = composer.Compose(score, layout, measureIndex: 0);
+        DisplayGlyph[] glyphs = composition.Page.Primitives.OfType<DisplayGlyph>().ToArray();
+        double staffTop = composition.Page.Primitives.OfType<DisplayLine>()
+            .First(line => line.ElementId.Value == Guid.Empty).Start.Y;
+
+        Assert.Contains(glyphs, glyph => glyph.Codepoint == metadata.GetGlyphCodepoint("fClef"));
+        Assert.Equal(2, glyphs.Count(glyph => glyph.ElementId.Value == Guid.Empty &&
+            glyph.Codepoint == metadata.GetGlyphCodepoint("accidentalSharp")));
+        Assert.DoesNotContain(glyphs, glyph => glyph.ElementId.Value == sharpNoteId.Value &&
+            glyph.Codepoint == metadata.GetGlyphCodepoint("accidentalSharp"));
+        Assert.Contains(glyphs, glyph => glyph.ElementId.Value == naturalNoteId.Value &&
+            glyph.Codepoint == metadata.GetGlyphCodepoint("accidentalNatural"));
+        DisplayGlyph bassNotehead = Assert.Single(glyphs, glyph =>
+            glyph.ElementId.Value == sharpNoteId.Value &&
+            glyph.Codepoint == metadata.GetGlyphCodepoint("noteheadBlack"));
+        Assert.Equal(staffTop + 1, bassNotehead.Origin.Y, precision: 6);
+    }
+
+    [Fact]
     public void StaffSpaceShrinksToKeepThirtyStavesInsideTheA4Page()
     {
         SmuflMetadata metadata = LoadMetadata();

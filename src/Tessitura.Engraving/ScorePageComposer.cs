@@ -78,11 +78,16 @@ public sealed class ScorePageComposer
 
         double staffSpace = GetStaffSpacePoints(score);
         double headerWidth = 0;
+        int headerStaffCount = CountStaves(score);
         foreach (Measure measure in score.Measures)
         {
-            double currentWidth = _horizontalSpacer.BuildHeader(_metadata, "gClef",
-                new KeySignature(0), measure.TimeSignature, _style).MusicStartX;
-            headerWidth = Math.Max(headerWidth, currentWidth);
+            for (int staffIndex = 0; staffIndex < headerStaffCount; staffIndex++)
+            {
+                double currentWidth = _horizontalSpacer.BuildHeader(_metadata,
+                    ClefGlyphName(GetStaffClef(score, staffIndex)),
+                    measure.KeySignature, measure.TimeSignature, _style).MusicStartX;
+                headerWidth = Math.Max(headerWidth, currentWidth);
+            }
         }
 
         double pageWidth = PageWidthPoints / staffSpace;
@@ -122,9 +127,8 @@ public sealed class ScorePageComposer
         double leftMargin = HorizontalMarginPoints / staffSpace;
         double topMargin = VerticalMarginPoints / staffSpace;
         TimeSignature firstMeter = score.Measures[system.Range.StartIndex].TimeSignature;
-        SystemHeaderLayout header = _horizontalSpacer.BuildHeader(_metadata, "gClef",
-            new KeySignature(0), firstMeter, _style);
         int staffCount = CountStaves(score);
+        SystemHeaderLayout header = BuildSystemHeader(score, system.Range.StartIndex, staffCount);
         ImmutableArray<DrawingPrimitive>.Builder primitives = ImmutableArray.CreateBuilder<DrawingPrimitive>();
         StaffElementPlacer placer = new(_metadata, _style);
         EventId staffLineId = new(Guid.Empty);
@@ -143,8 +147,7 @@ public sealed class ScorePageComposer
 
             SystemLine pageSystem = layout.Systems[pageSystemIndex];
             ImmutableArray<double> measureWidths = GetDisplayMeasureWidths(score, layout, pageSystem);
-            SystemHeaderLayout pageHeader = _horizontalSpacer.BuildHeader(_metadata, "gClef",
-                new KeySignature(0), score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
+            SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount);
             double musicStartX = leftMargin + pageHeader.MusicStartX;
             double systemWidth = Sum(measureWidths);
             double musicEndX = musicStartX + systemWidth;
@@ -154,7 +157,12 @@ public sealed class ScorePageComposer
                 double staffTop = placement.StaffTops[staffIndex];
                 primitives.AddRange(placer.PlaceStaffLines(staffLineId, leftMargin,
                     musicEndX, staffTop));
-                AddHeader(primitives, pageHeader, leftMargin, staffTop);
+                Clef staffClef = GetStaffClef(score, staffIndex);
+                SystemHeaderLayout staffHeader = _horizontalSpacer.BuildHeader(_metadata,
+                    ClefGlyphName(staffClef), score.Measures[pageSystem.Range.StartIndex].KeySignature,
+                    score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
+                AddHeader(primitives, staffHeader, leftMargin, staffTop, staffClef,
+                    score.Measures[pageSystem.Range.StartIndex].KeySignature);
                 AddBarline(primitives, staffLineId,
                     musicStartX - _style.MinimumRhythmicGap, staffTop,
                     _style.StaffLineThickness);
@@ -169,7 +177,7 @@ public sealed class ScorePageComposer
                         out StaffMeasure? staffMeasure))
                     {
                         AddStaffMeasure(primitives, placer, score, staffMeasure,
-                            scoreMeasureIndex, measureStartX, measureWidth, staffTop,
+                            scoreMeasureIndex, staffClef, measureStartX, measureWidth, staffTop,
                             cancellationToken);
                     }
 
@@ -190,14 +198,68 @@ public sealed class ScorePageComposer
         return new ScorePageComposition(page, staffSpace, systemIndex, system.Range, cursorLocation);
     }
 
-    private void AddHeader(ImmutableArray<DrawingPrimitive>.Builder primitives,
-        SystemHeaderLayout header, double leftMargin, double staffTop)
+    private SystemHeaderLayout BuildSystemHeader(Score score, int measureIndex, int staffCount)
     {
+        // All staves in a system share one music start, so use the widest header.
+        SystemHeaderLayout widest = default!;
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            SystemHeaderLayout current = _horizontalSpacer.BuildHeader(_metadata,
+                ClefGlyphName(GetStaffClef(score, staffIndex)),
+                score.Measures[measureIndex].KeySignature,
+                score.Measures[measureIndex].TimeSignature, _style);
+            if (widest is null || current.MusicStartX > widest.MusicStartX)
+            {
+                widest = current;
+            }
+        }
+
+        return widest;
+    }
+
+    private static Clef GetStaffClef(Score score, int staffIndex)
+    {
+        int remaining = staffIndex;
+        foreach (Instrument instrument in score.Instruments)
+        {
+            if (remaining < instrument.Staves.Length)
+            {
+                return instrument.Staves[remaining].InitialClef;
+            }
+
+            remaining -= instrument.Staves.Length;
+        }
+
+        return Clef.Treble;
+    }
+
+    private static string ClefGlyphName(Clef clef) => clef switch
+    {
+        Clef.Treble => "gClef",
+        Clef.Bass => "fClef",
+        Clef.Alto or Clef.Tenor => "cClef",
+        _ => throw new ArgumentOutOfRangeException(nameof(clef)),
+    };
+
+    private void AddHeader(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        SystemHeaderLayout header, double leftMargin, double staffTop, Clef clef,
+        KeySignature key)
+    {
+        int keyIndex = 0;
         foreach (HeaderSymbol symbol in header.Symbols)
         {
             double y = symbol.Part switch
             {
-                HeaderPart.Clef => staffTop + 3.5,
+                // SMuFL clef origins sit on the line each clef names.
+                HeaderPart.Clef => clef switch
+                {
+                    Clef.Treble => staffTop + 3.5,
+                    Clef.Bass => staffTop + 1,
+                    Clef.Alto => staffTop + 2,
+                    _ => staffTop + 1,
+                },
+                HeaderPart.KeySignature =>
+                    staffTop + 4 - KeySignaturePositions.Get(key.Fifths, keyIndex++, clef) * 0.5,
                 HeaderPart.MeterNumerator => staffTop + 1.6,
                 HeaderPart.MeterDenominator => staffTop + 3.6,
                 _ => staffTop + 1.5,
@@ -209,14 +271,17 @@ public sealed class ScorePageComposer
 
     private void AddStaffMeasure(ImmutableArray<DrawingPrimitive>.Builder primitives,
         StaffElementPlacer placer, Score score, StaffMeasure staffMeasure, int measureIndex,
-        double measureStartX, double measureWidth, double staffTop,
+        Clef clef, double measureStartX, double measureWidth, double staffTop,
         CancellationToken cancellationToken)
     {
+        AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
+            out (int Voice, int Event, int Note)[] order);
         foreach (Voice voice in staffMeasure.Voices)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            foreach (MusicEvent musicEvent in voice.Events)
+            for (int eventIndex = 0; eventIndex < voice.Events.Length; eventIndex++)
             {
+                MusicEvent musicEvent = voice.Events[eventIndex];
                 cancellationToken.ThrowIfCancellationRequested();
                 double onset = (double)musicEvent.Onset.Num / musicEvent.Onset.Den;
                 double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
@@ -231,21 +296,105 @@ public sealed class ScorePageComposer
                     for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
                     {
                         Note note = chord.Notes[noteIndex];
-                        AccidentalMark accidental = note.Pitch.Alter switch
+                        AccidentalMark accidental = AccidentalMark.None;
+                        for (int i = 0; i < order.Length; i++)
                         {
-                            -2 => AccidentalMark.DoubleFlat,
-                            -1 => AccidentalMark.Flat,
-                            1 => AccidentalMark.Sharp,
-                            2 => AccidentalMark.DoubleSharp,
-                            _ => AccidentalMark.None,
-                        };
+                            if (order[i].Voice == voice.Number && order[i].Event == eventIndex &&
+                                order[i].Note == noteIndex)
+                            {
+                                accidental = marks[i];
+                                break;
+                            }
+                        }
+
                         double chordOffset = chord.Notes.Length <= 1 ? 0 : noteIndex * 0.75;
                         primitives.AddRange(placer.PlaceNote(chord.Id, note.Pitch,
-                            chord.Duration, accidental, x + chordOffset, staffTop));
+                            chord.Duration, accidental, x + chordOffset, staffTop, clef));
                     }
                 }
             }
         }
+    }
+
+    private static AccidentalMark[] ResolveAccidentals(Measure measure, int measureIndex,
+        StaffMeasure staffMeasure, out (int Voice, int Event, int Note)[] order)
+    {
+        // Accidentals follow the sounding order of the measure across voices
+        // (Behind Bars, Accidentals and Key Signatures > Using accidentals).
+        int count = 0;
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            foreach (MusicEvent musicEvent in voice.Events)
+            {
+                if (musicEvent is Chord chord)
+                {
+                    count += chord.Notes.Length;
+                }
+            }
+        }
+
+        order = new (int, int, int)[count];
+        Fraction[] onsets = new Fraction[count];
+        int filled = 0;
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            for (int eventIndex = 0; eventIndex < voice.Events.Length; eventIndex++)
+            {
+                if (voice.Events[eventIndex] is not Chord chord)
+                {
+                    continue;
+                }
+
+                for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
+                {
+                    int slot = filled++;
+                    while (slot > 0 && onsets[slot - 1] > chord.Onset)
+                    {
+                        onsets[slot] = onsets[slot - 1];
+                        order[slot] = order[slot - 1];
+                        slot--;
+                    }
+
+                    onsets[slot] = chord.Onset;
+                    order[slot] = (voice.Number, eventIndex, noteIndex);
+                }
+            }
+        }
+
+        AccidentalInput[] inputs = new AccidentalInput[count];
+        for (int i = 0; i < count; i++)
+        {
+            Voice voice = default!;
+            foreach (Voice candidate in staffMeasure.Voices)
+            {
+                if (candidate.Number == order[i].Voice)
+                {
+                    voice = candidate;
+                    break;
+                }
+            }
+
+            Chord chord = (Chord)voice.Events[order[i].Event];
+            Pitch pitch = chord.Notes[order[i].Note].Pitch;
+            bool tiedFromPrevious = false;
+            if (order[i].Event > 0 && voice.Events[order[i].Event - 1] is Chord previous)
+            {
+                foreach (Note candidate in previous.Notes)
+                {
+                    if (candidate.TiedToNext && candidate.Pitch == pitch)
+                    {
+                        tiedFromPrevious = true;
+                    }
+                }
+            }
+
+            inputs[i] = new AccidentalInput(measureIndex, pitch, tiedFromPrevious, measure.KeySignature);
+        }
+
+        ImmutableArray<AccidentalMark> resolved = new AccidentalResolver().Resolve(inputs);
+        AccidentalMark[] marks = new AccidentalMark[count];
+        resolved.CopyTo(marks);
+        return marks;
     }
 
     private void AddGlyph(ImmutableArray<DrawingPrimitive>.Builder primitives,

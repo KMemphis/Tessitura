@@ -46,13 +46,15 @@ public sealed class StaffElementPlacer
     /// <param name="accidental">The visible accidental decision.</param>
     /// <param name="x">The notehead glyph origin.</param>
     /// <param name="staffTop">The top staff-line position.</param>
+    /// <param name="clef">The staff clef used to place the written pitch.</param>
     /// <returns>The notehead, stem, optional accidental and dots, and ledger lines.</returns>
     public ImmutableArray<DrawingPrimitive> PlaceNote(EventId id, Pitch pitch,
-        Duration duration, AccidentalMark accidental, double x, double staffTop)
+        Duration duration, AccidentalMark accidental, double x, double staffTop,
+        Clef clef = Clef.Treble)
     {
         ElementId elementId = new(id.Value);
-        int staffPosition = (pitch.Octave - 4) * 7 + (int)pitch.Step - (int)Step.E;
-        double y = staffTop + 4 - staffPosition * 0.5;
+        int staffPosition = StaffPitchPosition.Get(pitch, clef);
+        double y = StaffPitchPosition.GetY(pitch, clef, staffTop);
         string headName = duration.Value switch
         {
             NoteValue.Whole => "noteheadWhole",

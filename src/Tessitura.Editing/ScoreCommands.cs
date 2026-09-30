@@ -3,6 +3,70 @@ using Tessitura.Core;
 
 namespace Tessitura.Editing;
 
+/// <summary>Changes the initial clef of one staff.</summary>
+/// <param name="Clef">The new staff clef.</param>
+public sealed record ChangeClefCommand(Clef Clef) : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Change clef";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context) =>
+        ScoreCommandEditor.UpdateStaff(score, context.StaffIndex,
+            staff => staff with { InitialClef = Clef });
+}
+
+/// <summary>Changes the key signature from the selected measure onward.</summary>
+/// <param name="KeySignature">The new key signature.</param>
+public sealed record ChangeKeySignatureCommand(KeySignature KeySignature) : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Change key signature";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (context.MeasureIndex >= score.Measures.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context));
+        }
+
+        ImmutableArray<Measure>.Builder measures = score.Measures.ToBuilder();
+        for (int index = context.MeasureIndex; index < measures.Count; index++)
+        {
+            measures[index] = measures[index] with { KeySignature = KeySignature };
+        }
+
+        return score with { Measures = measures.ToImmutable() };
+    }
+}
+
+/// <summary>Changes a measure's meter and reflows all staff voices to preserve their events.</summary>
+/// <param name="TimeSignature">The new meter for the selected measure.</param>
+public sealed record ChangeTimeSignatureCommand(TimeSignature TimeSignature) : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Change time signature";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (context.MeasureIndex >= score.Measures.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(context));
+        }
+
+        _ = new TimeSignature(TimeSignature.Numerator, TimeSignature.Denominator);
+        ImmutableArray<Measure> measures = score.Measures.SetItem(
+            context.MeasureIndex,
+            score.Measures[context.MeasureIndex] with { TimeSignature = TimeSignature });
+        Score changed = score with { Measures = measures };
+        return ScoreCommandEditor.NormalizeAllVoices(changed, context.MeasureIndex);
+    }
+}
+
 /// <summary>Adds a written pitch to a chord or replaces a rest with a note.</summary>
 public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch, Duration? Duration = null) : IScoreCommand
 {
@@ -202,6 +266,74 @@ public sealed record ChangeDotCountCommand(EventId EventId, int DotCount) : ISco
 
 internal static class ScoreCommandEditor
 {
+    public static Score UpdateStaff(Score score, int staffIndex, Func<Staff, Staff> update)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        ArgumentNullException.ThrowIfNull(update);
+        if (staffIndex < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(staffIndex));
+        }
+
+        int remainingStaffIndex = staffIndex;
+        for (int instrumentIndex = 0; instrumentIndex < score.Instruments.Length; instrumentIndex++)
+        {
+            Instrument instrument = score.Instruments[instrumentIndex];
+            if (remainingStaffIndex < instrument.Staves.Length)
+            {
+                ImmutableArray<Staff> staves = instrument.Staves.SetItem(
+                    remainingStaffIndex, update(instrument.Staves[remainingStaffIndex]));
+                return score with
+                {
+                    Instruments = score.Instruments.SetItem(instrumentIndex, instrument with { Staves = staves }),
+                };
+            }
+
+            remainingStaffIndex -= instrument.Staves.Length;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(staffIndex));
+    }
+
+    public static Score NormalizeAllVoices(Score score, int measureIndex)
+    {
+        int staffCount = 0;
+        foreach (Instrument instrument in score.Instruments)
+        {
+            staffCount = checked(staffCount + instrument.Staves.Length);
+        }
+
+        foreach (KeyValuePair<StaffMeasureKey, StaffMeasure> entry in score.Content)
+        {
+            staffCount = Math.Max(staffCount, entry.Key.StaffIndex + 1);
+        }
+
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            HashSet<int> voiceNumbers = [];
+            foreach (KeyValuePair<StaffMeasureKey, StaffMeasure> entry in score.Content)
+            {
+                if (entry.Key.StaffIndex != staffIndex)
+                {
+                    continue;
+                }
+
+                foreach (Voice voice in entry.Value.Voices)
+                {
+                    voiceNumbers.Add(voice.Number);
+                }
+            }
+
+            foreach (int voiceNumber in voiceNumbers)
+            {
+                score = RhythmicScoreNormalizer.NormalizeVoice(
+                    score, new EditContext(staffIndex, measureIndex, voiceNumber));
+            }
+        }
+
+        return score;
+    }
+
     public static Score UpdateEvent(
         Score score,
         EditContext context,

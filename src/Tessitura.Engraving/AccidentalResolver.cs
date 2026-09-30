@@ -3,56 +3,6 @@ using Tessitura.Core;
 
 namespace Tessitura.Engraving;
 
-/// <summary>Represents a conventional key signature from seven flats to seven sharps.</summary>
-public readonly record struct KeySignature
-{
-    /// <summary>Creates a key signature from its signed circle-of-fifths count.</summary>
-    /// <param name="fifths">Negative for flats, positive for sharps.</param>
-    public KeySignature(int fifths)
-    {
-        if (fifths is < -7 or > 7)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fifths));
-        }
-
-        Fifths = fifths;
-    }
-
-    /// <summary>Gets the signed number of flats or sharps.</summary>
-    public int Fifths { get; }
-
-    /// <summary>Gets the alteration supplied by this signature for a written step.</summary>
-    /// <param name="step">The written letter name.</param>
-    /// <returns>Negative one, zero, or positive one.</returns>
-    public int GetAlter(Step step)
-    {
-        // Behind Bars, Accidentals and Key Signatures > Key Signatures:
-        // sharps follow F C G D A E B; flats reverse that order.
-        int sharpOrder = step switch
-        {
-            Step.F => 0,
-            Step.C => 1,
-            Step.G => 2,
-            Step.D => 3,
-            Step.A => 4,
-            Step.E => 5,
-            Step.B => 6,
-            _ => throw new ArgumentOutOfRangeException(nameof(step)),
-        };
-        if (Fifths > 0 && sharpOrder < Fifths)
-        {
-            return 1;
-        }
-
-        if (Fifths < 0 && 6 - sharpOrder < -Fifths)
-        {
-            return -1;
-        }
-
-        return 0;
-    }
-}
-
 /// <summary>Describes one written pitch in engraving order.</summary>
 /// <param name="MeasureIndex">The zero-based measure index.</param>
 /// <param name="Pitch">The pitch as written, including its alteration.</param>

@@ -29,6 +29,7 @@ public sealed record ScoreEventProperties(
     ImmutableArray<Note> Notes,
     bool HasSelectedNote,
     int StaffIndex,
+    int MeasureIndex,
     int MeasureNumber,
     int VoiceNumber,
     Fraction Position);
@@ -125,8 +126,8 @@ public sealed class ScoreInputController
             bool hasSelectedNote = location.Event is Chord selectedChord &&
                 (item.NoteIndex is not null || selectedChord.Notes.Length == 1);
             return new ScoreEventProperties(location.Event.Id, kind, location.Event.Duration, notes,
-                hasSelectedNote,
-                location.Context.StaffIndex, CurrentScore.Measures[location.Context.MeasureIndex].Number,
+                hasSelectedNote, location.Context.StaffIndex, location.Context.MeasureIndex,
+                CurrentScore.Measures[location.Context.MeasureIndex].Number,
                 location.Context.VoiceNumber, location.Position.Position);
         }
     }
@@ -312,6 +313,24 @@ public sealed class ScoreInputController
     public bool ChangeSelectedDotCount(int dotCount) =>
         ApplySelectedEvent(properties => new ChangeDotCountCommand(properties.EventId, dotCount));
 
+    /// <summary>Changes the initial clef on the selected event's staff.</summary>
+    /// <param name="clef">The new staff clef.</param>
+    /// <returns>Whether a single score event was selected.</returns>
+    public bool ChangeSelectedClef(Clef clef) =>
+        ApplySelectedEvent(_ => new ChangeClefCommand(clef));
+
+    /// <summary>Changes the key signature from the selected event's measure onward.</summary>
+    /// <param name="keySignature">The new key signature.</param>
+    /// <returns>Whether a single score event was selected.</returns>
+    public bool ChangeSelectedKeySignature(KeySignature keySignature) =>
+        ApplySelectedEvent(_ => new ChangeKeySignatureCommand(keySignature));
+
+    /// <summary>Changes the meter in the selected event's measure.</summary>
+    /// <param name="timeSignature">The new time signature.</param>
+    /// <returns>Whether a single score event was selected.</returns>
+    public bool ChangeSelectedTimeSignature(TimeSignature timeSignature) =>
+        ApplySelectedEvent(_ => new ChangeTimeSignatureCommand(timeSignature));
+
     /// <summary>Changes the written accidental on the selected note.</summary>
     /// <param name="alteration">The chromatic alteration in semitones.</param>
     /// <returns>Whether a note was selected and changed.</returns>
@@ -377,8 +396,9 @@ public sealed class ScoreInputController
             return;
         }
 
-        Pitch pitch = NearestPitch(step);
         (int measureIndex, Fraction localPosition) = EnsureCursorMeasure();
+        Pitch pitch = NearestPitch(step);
+        pitch = new Pitch(pitch.Step, ResolveInputAlteration(measureIndex, localPosition, pitch), pitch.Octave);
         EditContext context = new(Cursor.StaffIndex, measureIndex, Cursor.VoiceNumber);
         MusicEvent target = FindEventAt(context, localPosition);
         Duration? duration = target is Rest ? CurrentDuration : null;
@@ -390,6 +410,42 @@ public sealed class ScoreInputController
         _lastPitch = pitch;
         Cursor = Cursor with { Position = Cursor.Position + CurrentDuration.Length };
         NotifyStateChanged();
+    }
+
+    private int ResolveInputAlteration(int measureIndex, Fraction localPosition, Pitch pitch)
+    {
+        int alteration = CurrentScore.Measures[measureIndex].KeySignature.GetAlter(pitch.Step);
+        if (!CurrentScore.Content.TryGetValue(new StaffMeasureKey(Cursor.StaffIndex, measureIndex),
+            out StaffMeasure? staffMeasure))
+        {
+            return alteration;
+        }
+
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            foreach (MusicEvent musicEvent in voice.Events)
+            {
+                if (musicEvent.Onset >= localPosition)
+                {
+                    break;
+                }
+
+                if (musicEvent is not Chord chord)
+                {
+                    continue;
+                }
+
+                foreach (Note note in chord.Notes)
+                {
+                    if (note.Pitch.Step == pitch.Step && note.Pitch.Octave == pitch.Octave)
+                    {
+                        alteration = note.Pitch.Alter;
+                    }
+                }
+            }
+        }
+
+        return alteration;
     }
 
     private Pitch NearestPitch(Step step)

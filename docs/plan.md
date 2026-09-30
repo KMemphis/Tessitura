@@ -58,7 +58,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F2.6 · Ciclo de actualización.** Comando, maquetación en segundo plano, invalidación de páginas y repintado. *Hecho cuando (criterio aprobado el 2026-09-30):* el procesamiento de una nota en la partitura de referencia tarda menos de 16 ms y la página se presenta en el siguiente cuadro de composición. La meta original de menos de 16 ms hasta verla permanece en la definición para la versión 1.0.
 - [x] **F2.7 · Estructura de la ventana.** Barra superior, paneles laterales plegables, barra de estado y temas claro y oscuro. *Hecho cuando:* coincide con la distribución de la definición.
 - [x] **F2.8 · Inspector.** Propiedades del elemento seleccionado, editables mediante comandos. *Hecho cuando:* cambiar la duración desde el inspector se puede deshacer.
-- [ ] **F2.9 · Paletas básicas.** Claves, armaduras, compases y alteraciones. *Hecho cuando:* cada elemento se aplica a la selección con un clic.
+- [x] **F2.9 · Paletas básicas.** Claves, armaduras, compases y alteraciones. *Hecho cuando:* cada elemento se aplica a la selección con un clic.
 - [ ] **F2.10 · Formato .tess.** ZIP con manifiesto versionado, guardado atómico, marco de migraciones y autoguardado cada 2 minutos. *Hecho cuando:* guardar y abrir devuelve una partitura idéntica, y un archivo de versión anterior se migra.
 - [ ] **F2.11 · Inicio y asistente.** Pantalla de inicio con recientes y asistente de nueva partitura con plantillas de piano, cuarteto de cuerda y coro SATB. *Hecho cuando:* se crea cada plantilla en menos de cinco clics.
 - [ ] **F2.12 · Paleta de comandos.** `Ctrl+K` con búsqueda difusa sobre el ActionRegistry. *Hecho cuando:* toda acción registrada aparece y se ejecuta desde la paleta.

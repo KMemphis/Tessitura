@@ -18,7 +18,21 @@ public sealed record Instrument(string Name, ImmutableArray<Staff> Staves);
 
 /// <summary>Describes one staff.</summary>
 /// <param name="Name">The staff name.</param>
-public sealed record Staff(string Name);
+/// <param name="InitialClef">The clef used when the staff is first drawn.</param>
+public sealed record Staff(string Name, Clef InitialClef = Clef.Treble);
+
+/// <summary>Identifies a conventional pitched staff clef.</summary>
+public enum Clef
+{
+    /// <summary>G clef on the second line from the bottom.</summary>
+    Treble,
+    /// <summary>F clef on the second line from the top.</summary>
+    Bass,
+    /// <summary>C clef on the middle line.</summary>
+    Alto,
+    /// <summary>C clef on the fourth line from the bottom.</summary>
+    Tenor,
+}
 
 /// <summary>Represents a conventional time signature.</summary>
 public readonly record struct TimeSignature
@@ -52,10 +66,64 @@ public readonly record struct TimeSignature
     public Fraction Length => new(Numerator, Denominator);
 }
 
+/// <summary>Represents a conventional key signature from seven flats to seven sharps.</summary>
+public readonly record struct KeySignature
+{
+    /// <summary>Creates a key signature from its signed circle-of-fifths count.</summary>
+    /// <param name="fifths">Negative for flats, positive for sharps.</param>
+    public KeySignature(int fifths)
+    {
+        if (fifths is < -7 or > 7)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fifths));
+        }
+
+        Fifths = fifths;
+    }
+
+    /// <summary>Gets the signed number of flats or sharps.</summary>
+    public int Fifths { get; }
+
+    /// <summary>Gets the alteration supplied by this signature for a written step.</summary>
+    /// <param name="step">The written letter name.</param>
+    /// <returns>Negative one, zero, or positive one.</returns>
+    public int GetAlter(Step step)
+    {
+        // Behind Bars, Accidentals and Key Signatures > Key Signatures:
+        // sharps follow F C G D A E B; flats reverse that order.
+        int sharpOrder = step switch
+        {
+            Step.F => 0,
+            Step.C => 1,
+            Step.G => 2,
+            Step.D => 3,
+            Step.A => 4,
+            Step.E => 5,
+            Step.B => 6,
+            _ => throw new ArgumentOutOfRangeException(nameof(step)),
+        };
+        if (Fifths > 0 && sharpOrder < Fifths)
+        {
+            return 1;
+        }
+
+        if (Fifths < 0 && 6 - sharpOrder < -Fifths)
+        {
+            return -1;
+        }
+
+        return 0;
+    }
+}
+
 /// <summary>Describes one measure on the score's global timeline.</summary>
 /// <param name="Number">The displayed measure number.</param>
 /// <param name="TimeSignature">The measure's meter.</param>
-public sealed record Measure(int Number, TimeSignature TimeSignature);
+/// <param name="KeySignature">The key signature in effect in this measure.</param>
+public sealed record Measure(
+    int Number,
+    TimeSignature TimeSignature,
+    KeySignature KeySignature = default);
 
 /// <summary>Locates one staff's content in one global measure.</summary>
 /// <param name="StaffIndex">The zero-based staff index.</param>

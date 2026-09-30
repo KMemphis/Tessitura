@@ -261,3 +261,12 @@
 - Se probó la ventana de Tessitura en macOS: cambiar el silencio seleccionado de redonda a negra desde el inspector actualiza la partitura y conserva la selección. La captura corresponde únicamente a la ventana: `docs/capturas/f2.8-macos-inspector-window.png`.
 - `dotnet build Tessitura.sln --configuration Release --no-restore` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 164 pruebas, sin fallos ni omisiones.
 - Tras la observación del propietario sobre el acabado visual, se añadió F5.10 para hacer explícito el pulido visual de la aplicación y revisar capturas en Windows, macOS y Linux. Siguiente tarea: F2.9, paletas básicas.
+
+## 2026-09-30 · F2.9 Paletas básicas
+
+- Se añadieron `Staff.InitialClef`, `Clef` y `Measure.KeySignature` en Core (ya previstos en la definición: clave inicial por pentagrama y armadura en la línea temporal global); `KeySignature` pasó de Engraving a Core. Nuevos comandos con historial: `ChangeClefCommand`, `ChangeKeySignatureCommand` (desde el compás seleccionado en adelante) y `ChangeTimeSignatureCommand` (reflujo de todas las voces con la normalización rítmica de F2.3).
+- La paleta izquierda muestra claves (Sol, Fa, Do alto, Do tenor), las 15 armaduras, siete compases y bemol/becuadro/sostenido. Cada botón ejecuta una acción registrada `palette.*` con atajo configurable; la UI no modifica la partitura directamente.
+- `ScorePageComposer` dibuja clave y armadura por pentagrama (posiciones según Behind Bars, con `KeySignaturePositions`), coloca las notas según la clave (`StaffPitchPosition`) y resuelve los accidentales con `AccidentalResolver` (armadura, compás y ligaduras). La entrada por teclado respeta la armadura y los accidentales previos del compás.
+- Pruebas nuevas: dos en `ScorePaletteTests` (aplicar clave, armadura y alteración con un clic y deshacer; cambio de compás conserva eventos e invariante) y una en `ScorePageComposerTests` (cabecera Fa, armadura y accidentales). `dotnet build` 0 advertencias y 0 errores; `dotnet test` pasó 167 pruebas, sin fallos ni omisiones.
+- Deuda: los cambios de armadura o clave a mitad de sistema no se dibujan aún (las notas sí usan la armadura correcta); la posición vertical de la clave de Sol (3,5) es anterior a esta tarea y se revisará en F5.10; la armadura de Do tenor con sostenidos sigue una disposición ascendente pendiente de contrastar con Behind Bars.
+- Siguiente tarea: F2.10, formato .tess.

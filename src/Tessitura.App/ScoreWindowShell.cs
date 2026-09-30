@@ -38,8 +38,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         };
 
         TopBar = CreateTopBar();
-        LeftPanel = CreateSidePanel("Paletas", ["Claves", "Armaduras", "Compases", "Alteraciones",
-            "Dinámicas", "Articulaciones", "Líneas", "Texto"], 200);
+        LeftPanel = CreateNotationPalettePanel();
         RightPanel = CreateInspectorPanel(out _inspectorText, out _inspectorDetails);
         BottomPanel = CreateBottomPanel();
         BottomPanel.IsVisible = false;
@@ -111,8 +110,11 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     public string InspectorDetailsText => _inspectorDetails.Text ?? string.Empty;
 
     /// <summary>Defines all commands exposed by the window chrome.</summary>
-    public ImmutableArray<ActionDefinition> CreateActions() =>
-    [
+    public ImmutableArray<ActionDefinition> CreateActions()
+    {
+        ImmutableArray<ActionDefinition>.Builder actions = ImmutableArray.CreateBuilder<ActionDefinition>();
+        actions.AddRange((ReadOnlySpan<ActionDefinition>)
+        [
         new("view.page", "Vista de página", "Ctrl+Shift+1", () => Canvas.Focus()),
         new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",
@@ -143,7 +145,77 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             () => SetSelectedAlteration(1)),
         new("inspector.tie.toggle", "Alternar ligadura de unión", "Alt+0",
             () => _input.ToggleSelectedTie()),
-    ];
+        ]);
+
+        int shortcutIndex = 0;
+        (Clef Clef, string Label, string Id)[] clefs =
+        [
+            (Clef.Treble, "Sol", "palette.clef.treble"),
+            (Clef.Bass, "Fa", "palette.clef.bass"),
+            (Clef.Alto, "Do alto", "palette.clef.alto"),
+            (Clef.Tenor, "Do tenor", "palette.clef.tenor"),
+        ];
+        foreach ((Clef clef, string label, string id) in clefs)
+        {
+            string shortcut = CreatePaletteShortcut(shortcutIndex++);
+            actions.Add(new ActionDefinition(id, $"Aplicar clave de {label}", shortcut,
+                () => _input.ChangeSelectedClef(clef)));
+        }
+
+        for (int fifths = -7; fifths <= 7; fifths++)
+        {
+            string id = fifths switch
+            {
+                < 0 => $"palette.key.flats.{-fifths}",
+                > 0 => $"palette.key.sharps.{fifths}",
+                _ => "palette.key.c",
+            };
+            string label = GetKeySignatureLabel(fifths);
+            string description = fifths switch
+            {
+                < 0 => $"Aplicar armadura de {-fifths} bemoles ({label})",
+                > 0 => $"Aplicar armadura de {fifths} sostenidos ({label})",
+                _ => "Aplicar armadura de Do mayor o La menor",
+            };
+            string shortcut = CreatePaletteShortcut(shortcutIndex++);
+            KeySignature keySignature = new(fifths);
+            actions.Add(new ActionDefinition(id, description, shortcut,
+                () => _input.ChangeSelectedKeySignature(keySignature)));
+        }
+
+        (TimeSignature TimeSignature, string Label)[] meters =
+        [
+            (new TimeSignature(2, 2), "2/2"),
+            (new TimeSignature(2, 4), "2/4"),
+            (new TimeSignature(3, 4), "3/4"),
+            (new TimeSignature(4, 4), "4/4"),
+            (new TimeSignature(6, 8), "6/8"),
+            (new TimeSignature(9, 8), "9/8"),
+            (new TimeSignature(12, 8), "12/8"),
+        ];
+        foreach ((TimeSignature timeSignature, string label) in meters)
+        {
+            string id = $"palette.meter.{label.Replace('/', '-')}";
+            string shortcut = CreatePaletteShortcut(shortcutIndex++);
+            actions.Add(new ActionDefinition(id, $"Aplicar compás {label}", shortcut,
+                () => _input.ChangeSelectedTimeSignature(timeSignature)));
+        }
+
+        (int Alteration, string Label, string Id)[] accidentals =
+        [
+            (-1, "bemol", "palette.accidental.flat"),
+            (0, "becuadro", "palette.accidental.natural"),
+            (1, "sostenido", "palette.accidental.sharp"),
+        ];
+        foreach ((int alteration, string label, string id) in accidentals)
+        {
+            string shortcut = CreatePaletteShortcut(shortcutIndex++);
+            actions.Add(new ActionDefinition(id, $"Aplicar {label} a la selección", shortcut,
+                () => SetSelectedAlteration(alteration)));
+        }
+
+        return actions.ToImmutable();
+    }
 
     /// <summary>Connects visible controls to the central action registry.</summary>
     public void AttachActionRegistry(ActionRegistry actions)
@@ -203,17 +275,101 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         return new Border { Child = row, Padding = new Thickness(10, 6), Height = 52 };
     }
 
-    private Border CreateSidePanel(string title, string[] categories, double width)
+    private Border CreateNotationPalettePanel()
     {
         StackPanel stack = new() { Spacing = 9, Margin = new Thickness(14, 14, 10, 10) };
-        stack.Children.Add(CreateLabel(title, 17, FontWeight.SemiBold));
-        foreach (string category in categories)
+        stack.Children.Add(CreateLabel("Paletas", 17, FontWeight.SemiBold));
+        AddPaletteGroup(stack, "Claves",
+        [
+            ("Sol", "palette.clef.treble"),
+            ("Fa", "palette.clef.bass"),
+            ("Do alto", "palette.clef.alto"),
+            ("Do tenor", "palette.clef.tenor"),
+        ]);
+        (string Label, string ActionId)[] keySignatures = new (string, string)[15];
+        for (int fifths = -7; fifths <= 7; fifths++)
+        {
+            string actionId = fifths switch
+            {
+                < 0 => $"palette.key.flats.{-fifths}",
+                > 0 => $"palette.key.sharps.{fifths}",
+                _ => "palette.key.c",
+            };
+            keySignatures[fifths + 7] = (GetKeySignatureLabel(fifths), actionId);
+        }
+
+        AddPaletteGroup(stack, "Armaduras", keySignatures);
+        AddPaletteGroup(stack, "Compases",
+        [
+            ("2/2", "palette.meter.2-2"),
+            ("2/4", "palette.meter.2-4"),
+            ("3/4", "palette.meter.3-4"),
+            ("4/4", "palette.meter.4-4"),
+            ("6/8", "palette.meter.6-8"),
+            ("9/8", "palette.meter.9-8"),
+            ("12/8", "palette.meter.12-8"),
+        ]);
+        AddPaletteGroup(stack, "Alteraciones",
+        [
+            ("♭", "palette.accidental.flat"),
+            ("♮", "palette.accidental.natural"),
+            ("♯", "palette.accidental.sharp"),
+        ]);
+        foreach (string category in new[] { "Dinámicas", "Articulaciones", "Líneas", "Texto" })
         {
             stack.Children.Add(CreateLabel(category, 13));
         }
 
-        return new Border { Width = width, Child = new ScrollViewer { Content = stack } };
+        return new Border { Width = 200, Child = new ScrollViewer { Content = stack } };
     }
+
+    private void AddPaletteGroup(StackPanel parent, string title,
+        (string Label, string ActionId)[] items)
+    {
+        parent.Children.Add(CreateLabel(title, 14, FontWeight.SemiBold));
+        WrapPanel row = new() { Orientation = Orientation.Horizontal, ItemWidth = 42, ItemHeight = 32 };
+        foreach ((string label, string actionId) in items)
+        {
+            Button button = CreateButton(label, label, actionId);
+            button.MinWidth = 42;
+            button.Padding = new Thickness(2);
+            row.Children.Add(button);
+        }
+
+        parent.Children.Add(row);
+    }
+
+    private static string CreatePaletteShortcut(int index)
+    {
+        const string digits = "1234567890";
+        if (index < 0 || index >= digits.Length + 26)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
+        char key = index < digits.Length ? digits[index] : (char)('A' + index - digits.Length);
+        return $"Ctrl+Alt+Shift+{key}";
+    }
+
+    private static string GetKeySignatureLabel(int fifths) => fifths switch
+    {
+        -7 => "Do♭",
+        -6 => "Sol♭",
+        -5 => "Re♭",
+        -4 => "La♭",
+        -3 => "Mi♭",
+        -2 => "Si♭",
+        -1 => "Fa",
+        0 => "Do",
+        1 => "Sol",
+        2 => "Re",
+        3 => "La",
+        4 => "Mi",
+        5 => "Si",
+        6 => "Fa♯",
+        7 => "Do♯",
+        _ => throw new ArgumentOutOfRangeException(nameof(fifths)),
+    };
 
     private Border CreateInspectorPanel(out TextBlock inspectorText, out TextBlock inspectorDetails)
     {
