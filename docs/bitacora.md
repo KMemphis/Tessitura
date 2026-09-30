@@ -506,3 +506,10 @@
 - Se añadieron cuatro pruebas: selección al alternar las tres vistas, composición de todos los sistemas en la galera, proyección de parte con identificadores enlazados y fondo de hoja continua de altura completa. `EditorShortcutsTests` confirma que las acciones nuevas no chocan con los atajos existentes. No se modificó el catálogo de imágenes de referencia.
 - `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 385 pruebas (88 Core, 49 Playback, 49 IO y 199 Engraving), 0 fallos y 0 omitidas.
 - Siguiente tarea: F4.14, MIDI en tiempo real.
+
+## 2026-09-30 · F4.14 MIDI en tiempo real
+
+- `Ctrl+Alt+R` inicia y detiene una toma MIDI desde el primer dispositivo conectado; se pausa la reproducción, suena un metrónomo miniaudio al tempo vigente y los eventos se registran con marcas de tiempo monotónicas. Al detener, el controlador agrupa notas simultáneas como acordes, cuantiza inicios y finales a corcheas, inserta silencios en los huecos y aplica cada cambio por los comandos de edición. El cursor inicial se ajusta al inicio de silencio más cercano para que la toma empiece en un límite escribible. El `MetronomeClickSource` no asigna memoria en `Render`.
+- Se añadieron cinco pruebas: melodía con jitter cuantizada a corcheas, silencio de corchea entre notas, anclaje al silencio más cercano, pulsos al tempo elegido y cero asignaciones del callback tras calentar el JIT. `EditorShortcutsTests` registra la nueva acción con el resto del editor sin colisiones.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 390 pruebas (88 Core, 49 Playback, 49 IO y 204 Engraving), 0 fallos y 0 omitidas.
+- La prueba física de dispositivos MIDI en Windows/Linux sigue diferida a F3.9, según lo acordado; F4.14 valida la secuencia mediante eventos MIDI simulados. Siguiente tarea: F4.15, rendimiento orquestal.

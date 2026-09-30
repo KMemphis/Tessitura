@@ -493,7 +493,13 @@ public sealed class ScoreInputController
     /// <summary>Writes the given sounding pitches as one chord at the cursor and advances by the current duration.</summary>
     /// <param name="midiNumbers">The MIDI note numbers played together.</param>
     /// <returns>Whether anything was written; only in note-entry mode.</returns>
-    public bool EnterChord(IReadOnlyList<int> midiNumbers)
+    public bool EnterChord(IReadOnlyList<int> midiNumbers) => EnterChord(midiNumbers, CurrentDuration);
+
+    /// <summary>Writes the given sounding pitches as one chord at the cursor using an explicit duration.</summary>
+    /// <param name="midiNumbers">The MIDI note numbers played together.</param>
+    /// <param name="duration">The exact notated duration of the chord.</param>
+    /// <returns>Whether anything was written; only in note-entry mode.</returns>
+    public bool EnterChord(IReadOnlyList<int> midiNumbers, Duration duration)
     {
         ArgumentNullException.ThrowIfNull(midiNumbers);
         if (Mode != ScoreInputMode.NoteEntry || midiNumbers.Count == 0)
@@ -511,8 +517,8 @@ public sealed class ScoreInputController
         foreach (int midi in midiNumbers.Order().Distinct())
         {
             Pitch pitch = SpellMidi(midi, sharps);
-            Duration? duration = first && target is Rest ? CurrentDuration : null;
-            Apply(new InsertNoteCommand(target.Id, pitch, duration), context);
+            Duration? noteDuration = first && target is Rest ? duration : null;
+            Apply(new InsertNoteCommand(target.Id, pitch, noteDuration), context);
             first = false;
             last = pitch;
         }
@@ -521,7 +527,7 @@ public sealed class ScoreInputController
         _lastContext = context;
         _lastNoteIndex = midiNumbers.Distinct().Count() - 1;
         _lastPitch = last;
-        Cursor = Cursor with { Position = Cursor.Position + CurrentDuration.Length };
+        Cursor = Cursor with { Position = Cursor.Position + duration.Length };
         NotifyStateChanged();
         return true;
     }
@@ -989,9 +995,17 @@ public sealed class ScoreInputController
 
     private void WriteRest()
     {
+        _ = EnterRest(CurrentDuration);
+    }
+
+    /// <summary>Writes a rest at the cursor with the supplied duration.</summary>
+    /// <param name="duration">The exact notated duration of the rest.</param>
+    /// <returns>Whether a rest was written; only in note-entry mode and over an existing rest.</returns>
+    public bool EnterRest(Duration duration)
+    {
         if (Mode != ScoreInputMode.NoteEntry)
         {
-            return;
+            return false;
         }
 
         (int measureIndex, Fraction localPosition) = EnsureCursorMeasure();
@@ -999,16 +1013,17 @@ public sealed class ScoreInputController
         MusicEvent target = FindEventAt(context, localPosition);
         if (target is not Rest rest)
         {
-            return;
+            return false;
         }
 
-        if (rest.Duration != CurrentDuration)
+        if (rest.Duration != duration)
         {
-            Apply(new ChangeDurationCommand(rest.Id, CurrentDuration), context);
+            Apply(new ChangeDurationCommand(rest.Id, duration), context);
         }
 
-        Cursor = Cursor with { Position = Cursor.Position + CurrentDuration.Length };
+        Cursor = Cursor with { Position = Cursor.Position + duration.Length };
         NotifyStateChanged();
+        return true;
     }
 
     private void SetDuration(NoteValue value)
