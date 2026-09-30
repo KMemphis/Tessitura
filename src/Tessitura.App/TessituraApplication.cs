@@ -23,7 +23,21 @@ public sealed class TessituraApplication : Application
     /// <inheritdoc />
     public override void OnFrameworkInitializationCompleted()
     {
-        Styles.Add(new Avalonia.Themes.Fluent.FluentTheme());
+        // Third-party control styles (AngryCarrot789/WPFDarkTheme, MIT), copied under Themes/AngryCarrot.
+        Uri themeBase = new("avares://Tessitura.App/");
+        Styles.Add(new Avalonia.Themes.Simple.SimpleTheme());
+        Resources.MergedDictionaries.Add(new Avalonia.Markup.Xaml.Styling.ResourceInclude(themeBase)
+        {
+            Source = new Uri("avares://Tessitura.App/Themes/AngryCarrot/Colours/SoftDark.axaml"),
+        });
+        Resources.MergedDictionaries.Add(new Avalonia.Markup.Xaml.Styling.ResourceInclude(themeBase)
+        {
+            Source = new Uri("avares://Tessitura.App/Themes/AngryCarrot/ControlColours.axaml"),
+        });
+        Styles.Add(new Avalonia.Markup.Xaml.Styling.StyleInclude(themeBase)
+        {
+            Source = new Uri("avares://Tessitura.App/Themes/AngryCarrot/Controls.axaml"),
+        });
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _assets = Path.Combine(AppContext.BaseDirectory, "assets", "fonts");

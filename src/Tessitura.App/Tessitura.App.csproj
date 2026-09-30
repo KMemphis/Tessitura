@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Avalonia.Skia" />
-    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Themes.Simple" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Tessitura.Rendering/Tessitura.Rendering.csproj" />

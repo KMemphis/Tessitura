@@ -315,3 +315,9 @@
 - Se añadió la dependencia `Avalonia.Themes.Fluent` 12.1.3 (MIT, misma versión que Avalonia.Desktop) fijada en `Directory.Packages.props` y se carga `FluentTheme` en `TessituraApplication`. Los controles ya tienen estilo en claro y oscuro; el interruptor de tema del editor sigue funcionando y la pantalla de inicio sigue el tema del sistema (se quitaron sus colores fijos). Captura de la ventana de inicio: `docs/capturas/theme-fluent-start-window.png`.
 - Al cerrar una sesión de forma normal se borra la copia de recuperación del autoguardado; solo un cierre inesperado la conserva.
 - Pendiente: revisar el aspecto de la paleta de comandos y de los cuadros del asistente con el tema en la ventana real; el pulido general sigue en F5.10.
+
+## 2026-09-30 · Tema visual elegido
+
+- Tras probar Fluent, Classic.Avalonia, Material.Avalonia y WPFDarkTheme, el propietario eligió el tema de WPFDarkTheme (AngryCarrot789, MIT). No existe como paquete NuGet: sus estilos (`Colours`, `ControlStyles`, `Controls`, `Converters`, `ControlColours.axaml`, `Controls.axaml` y las clases `GroupBox`/`WindowEx`) se copiaron a `src/Tessitura.App/Themes/AngryCarrot/` junto con su `LICENSE.txt` (commit 892ea59 del repositorio original), y se carga sobre `Avalonia.Themes.Simple` 12.1.3. Se retiró `Window.axaml` porque dependía de piezas de Avalonia 11 que cambiaron en 12; la ventana conserva su barra de título nativa. Se eliminó la dependencia de Fluent, que ya no se usa.
+- Obligación de distribución (MIT): conservar el aviso de copyright y la licencia con las copias del código; queda en `Themes/AngryCarrot/LICENSE.txt`. Este código es de un tercero y lo mantenemos nosotros.
+- Deuda: solo se revisó la pantalla de inicio; el editor, la paleta de comandos y el asistente necesitan una pasada visual con este tema (F5.10); el código original está pensado para Avalonia 11.

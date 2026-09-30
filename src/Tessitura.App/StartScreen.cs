@@ -159,7 +159,8 @@ public sealed class StartScreen : UserControl
     private Button ActionButton(string text, string actionId, double width)
     {
         Button button = new() { Content = text, Width = width, Margin = new Thickness(0, 0, 8, 8),
-            Padding = new Thickness(10, 8), HorizontalContentAlignment = HorizontalAlignment.Left };
+            Padding = new Thickness(10, 8), HorizontalContentAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = HorizontalAlignment.Left };
         button.Click += (_, _) => _actions?.TryExecute(actionId);
         Buttons[actionId] = button;
         return button;
