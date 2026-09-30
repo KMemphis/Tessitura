@@ -24,6 +24,8 @@ internal sealed class EditorSession : IDisposable
     private readonly string _assetsPath;
     private readonly PlaybackController _playback;
     private readonly Avalonia.Threading.DispatcherTimer _playhead;
+    private readonly Tessitura.Playback.Midi.IMidiPort _midi = Tessitura.Playback.Midi.DryWetMidiPort.CreateForThisSystem();
+    private readonly MidiStepInput _stepInput;
     private string? _path;
 
     public EditorSession(Window window, SmuflMetadata metadata, string assetsPath,
@@ -51,6 +53,8 @@ internal sealed class EditorSession : IDisposable
             new("file.save", "Guardar", "Ctrl+S", () => _ = SaveAsync(saveAs: false)),
             new("file.save-as", "Guardar como…", "Ctrl+Shift+S", () => _ = SaveAsync(saveAs: true)),
             new("file.export-pdf", "Exportar a PDF…", "Ctrl+E", () => _ = ExportPdfAsync()),
+            new("midi.connect", "Conectar el primer teclado MIDI", "Ctrl+Alt+M", ConnectMidi),
+            new("midi.disconnect", "Desconectar el teclado MIDI", "Ctrl+Alt+Shift+M", _midi.Close),
             new("file.close", "Cerrar y volver al inicio", "Ctrl+W", closeToStart),
         ];
         string soundFont = Path.Combine(assetsPath, "..", "soundfonts", "default.sf2");
@@ -64,7 +68,18 @@ internal sealed class EditorSession : IDisposable
             return new MeltySynth.Synthesizer(new MeltySynth.SoundFont(soundFont), new MeltySynth.SynthesizerSettings(rate));
         }, () => new Tessitura.Playback.Audio.MiniAudioOutput());
         _playhead = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
-        _playhead.Tick += (_, _) => _playback.Tick();
+        _stepInput = new MidiStepInput(_input);
+        _playhead.Tick += (_, _) =>
+        {
+            _playback.Tick();
+            _stepInput.Tick(Environment.TickCount64);
+        };
+        _midi.MessageReceived += message =>
+        {
+            long now = Environment.TickCount64;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => _stepInput.OnMessage(message, now));
+        };
+        _midi.DeviceDisconnected += name => Avalonia.Threading.Dispatcher.UIThread.Post(() => _window.Title = $"Tessitura — se desconectó el dispositivo MIDI {name}");
         _playhead.Start();
         definitions.AddRange(_playback.CreateActions().Select(a => a with { Execute = () => RunPlayback(a.Execute) }));
         definitions.AddRange(_input.CreateActions());
@@ -80,6 +95,25 @@ internal sealed class EditorSession : IDisposable
     }
 
     public ScoreWindowShell Shell { get; }
+
+    private void ConnectMidi()
+    {
+        if (!_midi.IsSupported)
+        {
+            _window.Title = "Tessitura — los dispositivos MIDI aún no son compatibles con este sistema";
+            return;
+        }
+
+        IReadOnlyList<Tessitura.Playback.Midi.MidiPortInfo> inputs = _midi.GetInputs();
+        if (inputs.Count == 0)
+        {
+            _window.Title = "Tessitura — no hay ningún teclado MIDI conectado";
+            return;
+        }
+
+        _midi.OpenInput(inputs[0].Id);
+        _window.Title = $"Tessitura — MIDI: {inputs[0].Name}";
+    }
 
     private void RunPlayback(Action action)
     {
@@ -99,6 +133,7 @@ internal sealed class EditorSession : IDisposable
     {
         // A clean close leaves nothing to recover; only a crash keeps the recovery copy.
         _playhead.Stop();
+        _midi.Dispose();
         _playback.Dispose();
         _autosave.Dispose();
         _autosave.Discard();

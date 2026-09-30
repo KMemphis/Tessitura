@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MeltySynth" />
+    <PackageReference Include="Melanchall.DryWetMidi" />
     <PackageReference Include="JAJ.Packages.MiniAudioEx" />
   </ItemGroup>
   <ItemGroup>

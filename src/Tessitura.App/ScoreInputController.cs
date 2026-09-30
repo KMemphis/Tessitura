@@ -366,6 +366,51 @@ public sealed class ScoreInputController
         NotifyStateChanged();
     }
 
+    /// <summary>Writes the given sounding pitches as one chord at the cursor and advances by the current duration.</summary>
+    /// <param name="midiNumbers">The MIDI note numbers played together.</param>
+    /// <returns>Whether anything was written; only in note-entry mode.</returns>
+    public bool EnterChord(IReadOnlyList<int> midiNumbers)
+    {
+        ArgumentNullException.ThrowIfNull(midiNumbers);
+        if (Mode != ScoreInputMode.NoteEntry || midiNumbers.Count == 0)
+        {
+            return false;
+        }
+
+        (int measureIndex, Fraction localPosition) = EnsureCursorMeasure();
+        bool sharps = CurrentScore.Measures[measureIndex].KeySignature.Fifths >= 0;
+        EditContext context = new(Cursor.StaffIndex, measureIndex, Cursor.VoiceNumber);
+        MusicEvent target = FindEventAt(context, localPosition);
+        bool first = true;
+        Pitch last = default;
+        foreach (int midi in midiNumbers.Order().Distinct())
+        {
+            Pitch pitch = SpellMidi(midi, sharps);
+            Duration? duration = first && target is Rest ? CurrentDuration : null;
+            Apply(new InsertNoteCommand(target.Id, pitch, duration), context);
+            first = false;
+            last = pitch;
+        }
+
+        _lastEventId = target.Id;
+        _lastContext = context;
+        _lastNoteIndex = midiNumbers.Distinct().Count() - 1;
+        _lastPitch = last;
+        Cursor = Cursor with { Position = Cursor.Position + CurrentDuration.Length };
+        NotifyStateChanged();
+        return true;
+    }
+
+    private static Pitch SpellMidi(int midi, bool sharps)
+    {
+        (Step Step, int Alter)[] sharpNames =
+            [(Step.C, 0), (Step.C, 1), (Step.D, 0), (Step.D, 1), (Step.E, 0), (Step.F, 0), (Step.F, 1), (Step.G, 0), (Step.G, 1), (Step.A, 0), (Step.A, 1), (Step.B, 0)];
+        (Step Step, int Alter)[] flatNames =
+            [(Step.C, 0), (Step.D, -1), (Step.D, 0), (Step.E, -1), (Step.E, 0), (Step.F, 0), (Step.G, -1), (Step.G, 0), (Step.A, -1), (Step.A, 0), (Step.B, -1), (Step.B, 0)];
+        (Step step, int alter) = (sharps ? sharpNames : flatNames)[midi % 12];
+        return new Pitch(step, alter, midi / 12 - 1);
+    }
+
     /// <summary>Gets whether the internal clipboard holds a copied fragment.</summary>
     public bool CanPaste => _clipboard is not null;
 

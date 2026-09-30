@@ -79,6 +79,18 @@ public sealed class SequencerTests
             sequencer.Render(block, 240); // warm up: first voices, JIT and pools
         }
 
+        Thread.Sleep(300); // let the tiered JIT finish promoting the render path
+        for (int i = 0; i < 400; i++)
+        {
+            sequencer.Render(block, 240);
+        }
+
+        Thread.Sleep(300); // let the tiered JIT finish promoting the render path
+        for (int i = 0; i < 400; i++)
+        {
+            sequencer.Render(block, 240);
+        }
+
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1500; i++)
         {
