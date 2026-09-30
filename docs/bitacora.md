@@ -527,3 +527,9 @@
 - Se incluyó FluidR3Mono_GM 2.315 bajo MIT como `default.sf2.br` (96 388 849 bytes) y su aviso de licencia. .NET lo descomprime una vez en los datos del usuario y MeltySynth lo cargó y produjo muestras no nulas en una prueba. El archivo sin comprimir no cabe como objeto único en GitHub; Brotli permite distribuirlo sin herramientas externas.
 - Pruebas nuevas: ancho y posición de silencio de compás, controles visibles y SoundFont real/caché ausente. `dotnet build Tessitura.sln --configuration Release`: 0 advertencias y 0 errores. `dotnet test Tessitura.sln --configuration Release --no-build`: 398 pruebas (89 Core, 49 Playback, 49 IO, 211 Engraving), 0 fallos, 0 omitidas.
 - La reproducción física en Windows/Linux de F3.6 continúa diferida por decisión del propietario. Siguiente tarea: UX.2, entrada de notas descubrible.
+
+## 2026-09-30 · UX.2 Entrada de notas descubrible
+
+- La barra muestra «Escribir notas», «Seleccionar», cinco duraciones y una guía que cambia con el modo. El estado activo se señala con una marca y el cursor musical sigue superpuesto al papel. Las acciones de teclado `N`, `Esc`, `C`–`B` y `3`–`7` siguen disponibles.
+- En el modo de escritura, un clic sobre un silencio en el pentagrama calcula la altura a partir de las cinco líneas visibles y la clave, prepara el cursor y ejecuta la acción de nota registrada en `ActionRegistry`; la UI no edita la partitura directamente. La prueba coloca la primera nota sin seleccionar previamente el silencio en claves de sol, fa y do alto, y verifica altura, tiempo y ausencia de selección residual.
+- `dotnet build Tessitura.sln --configuration Release`: 0 advertencias y 0 errores. `dotnet test Tessitura.sln --configuration Release --no-build`: 402 pruebas (89 Core, 49 Playback, 49 IO, 215 Engraving), 0 fallos, 0 omitidas. Siguiente tarea: UX.3, jerarquía visual, paletas e inspector.

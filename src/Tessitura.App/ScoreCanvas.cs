@@ -15,6 +15,7 @@ using DisplayBox = Tessitura.Engraving.DisplayLists.DisplayBox;
 using DisplayPoint = Tessitura.Engraving.DisplayLists.DisplayPoint;
 using DisplayListPage = Tessitura.Engraving.DisplayLists.Page;
 using ElementId = Tessitura.Engraving.DisplayLists.ElementId;
+using DisplayLine = Tessitura.Engraving.DisplayLists.Line;
 
 namespace Tessitura.App;
 
@@ -28,6 +29,7 @@ public sealed class ScoreCanvas : Control
     private readonly ScorePictureBridge _pictureBridge = new();
     private CompositionCustomVisual? _compositionVisual;
     private PageSpatialIndex? _pageSpatialIndex;
+    private DisplayListPage? _displayPage;
     private double _displayPageStaffSpace = 12;
     private Point? _dragPointer;
     private bool _userAdjusted;
@@ -155,6 +157,7 @@ public sealed class ScoreCanvas : Control
         }
 
         _pageSpatialIndex = new PageSpatialIndex(page);
+        _displayPage = page;
         _displayPageStaffSpace = staffSpace;
         InvalidateVisual();
     }
@@ -176,6 +179,7 @@ public sealed class ScoreCanvas : Control
         _presentation = presentation;
         _pictureBridge.Publish(presentation);
         _pageSpatialIndex = presentation.SpatialIndex;
+        _displayPage = presentation.Composition.Page;
         _displayPageStaffSpace = presentation.Composition.StaffSpacePoints;
         if (viewChanged)
         {
@@ -192,6 +196,7 @@ public sealed class ScoreCanvas : Control
     {
         _presentation = null;
         _pageSpatialIndex = null;
+        _displayPage = null;
         _pictureBridge.Publish(null);
         _compositionVisual?.SendHandlerMessage(new PictureChanged(Zoom, PanOffset));
     }
@@ -223,7 +228,80 @@ public sealed class ScoreCanvas : Control
         return true;
     }
 
-    internal void AttachActionRegistry(ActionRegistry actionRegistry)
+    /// <summary>Places a note at the clicked staff height through its registered score action.</summary>
+    /// <param name="viewPoint">Pointer location in canvas coordinates.</param>
+    /// <returns>Whether a rest was replaced with a note.</returns>
+    public bool PlaceNoteAt(Point viewPoint)
+    {
+        if (_displayPage is null || _pageSpatialIndex is null || _scoreInputController is null ||
+            _actionRegistry is null || _scoreInputController.Mode != ScoreInputMode.NoteEntry)
+        {
+            return false;
+        }
+
+        Point pagePoint = ViewToPage(viewPoint);
+        DisplayPoint point = new((pagePoint.X - 80) / _displayPageStaffSpace,
+            (pagePoint.Y - 40) / _displayPageStaffSpace);
+        if (!TryFindStaffTop(point, out double staffTop) ||
+            _pageSpatialIndex.HitTest(point) is not ElementId hit ||
+            !_scoreInputController.ContainsEvent(new EventId(hit.Value)))
+        {
+            return false;
+        }
+
+        int staffPosition = (int)Math.Round((staffTop + 4 - point.Y) * 2,
+            MidpointRounding.AwayFromZero);
+        Step? step = _scoreInputController.PreparePointerNote(new EventId(hit.Value), staffPosition);
+        return step is Step pitch && _actionRegistry.TryExecute($"score.note.{char.ToLowerInvariant(pitch.ToString()[0])}");
+    }
+
+    private bool TryFindStaffTop(DisplayPoint point, out double staffTop)
+    {
+        staffTop = 0;
+        double bestDistance = double.PositiveInfinity;
+        if (_displayPage is null) return false;
+        var primitives = _displayPage.Primitives;
+        for (int i = 0; i + 4 < primitives.Length; i++)
+        {
+            if (primitives[i] is not DisplayLine first || first.ElementId.Value != Guid.Empty ||
+                Math.Abs(first.Start.Y - first.End.Y) > 0.01 ||
+                first.End.X - first.Start.X < 5 || point.X < first.Start.X || point.X > first.End.X)
+            {
+                continue;
+            }
+
+            bool fiveLines = true;
+            for (int line = 1; line < 5; line++)
+            {
+                if (primitives[i + line] is not DisplayLine next ||
+                    next.ElementId.Value != Guid.Empty ||
+                    Math.Abs(next.Start.X - first.Start.X) > 0.01 ||
+                    Math.Abs(next.End.X - first.End.X) > 0.01 ||
+                    Math.Abs(next.Start.Y - first.Start.Y - line) > 0.01)
+                {
+                    fiveLines = false;
+                    break;
+                }
+            }
+
+            if (!fiveLines || point.Y < first.Start.Y - 2 || point.Y > first.Start.Y + 6)
+            {
+                continue;
+            }
+
+            double distance = Math.Abs(point.Y - first.Start.Y - 2);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                staffTop = first.Start.Y;
+            }
+        }
+
+        return double.IsFinite(bestDistance);
+    }
+
+    /// <summary>Connects score gestures to the registered editor actions.</summary>
+    public void AttachActionRegistry(ActionRegistry actionRegistry)
     {
         ArgumentNullException.ThrowIfNull(actionRegistry);
         if (_actionRegistry is not null)
@@ -323,6 +401,12 @@ public sealed class ScoreCanvas : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         Focus();
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && PlaceNoteAt(e.GetPosition(this)))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && SelectAt(e.GetPosition(this), e.KeyModifiers))
         {
             e.Handled = true;

@@ -53,6 +53,32 @@ public sealed class ScoreWindowShellTests
     }
 
     [Fact]
+    public void PrimaryNoteControlAndDurationCanWriteTheFirstNote()
+    {
+        ScoreInputController input = CreateInput();
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-entry-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            Assert.Equal("Escribir notas", shell.NoteEntryButton.Content);
+            Assert.True(actions.TryExecute("score.note-entry"));
+            Assert.Contains("C D E F G A B", shell.EntryGuideText);
+            Assert.True(actions.TryExecute("score.duration.half"));
+            Assert.True(actions.TryExecute("score.note.c"));
+            Assert.Contains("Blanca", shell.StatusText);
+            Assert.IsType<Chord>(input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+                .Voices[0].Events[0]);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
     public void RegisteredActionsCollapsePanelsAndSwitchTheme()
     {
         ScoreCanvas canvas = new();

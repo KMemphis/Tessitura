@@ -104,7 +104,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 ## UX · Revisión prioritaria antes de la puerta F4 (autorizada el 30 de septiembre de 2026)
 
 - [x] **UX.1 · Estabilizar lo visible.** Centrar silencios de compás, activar controles presentes y distribuir un SoundFont libre. *Hecho cuando:* el compás vacío se lee correctamente, las acciones visibles funcionan y el sintetizador carga el SoundFont incluido; build y pruebas en verde.
-- [ ] **UX.2 · Entrada de notas descubrible.** Botón de escritura, selector de duración, guía contextual y colocación con ratón sobre el pentagrama, conservando el teclado y ActionRegistry. *Hecho cuando:* desde una partitura nueva se escribe la primera nota sin conocer N ni seleccionar antes un silencio.
+- [x] **UX.2 · Entrada de notas descubrible.** Botón de escritura, selector de duración, guía contextual y colocación con ratón sobre el pentagrama, conservando el teclado y ActionRegistry. *Hecho cuando:* desde una partitura nueva se escribe la primera nota sin conocer N ni seleccionar antes un silencio.
 - [ ] **UX.3 · Ventana e inicio profesionales.** Jerarquía de barra, paletas plegables, inspector contextual, orientación inicial y errores situados junto a la acción. *Hecho cuando:* no hay controles falsos ni texto cortado a 1000 × 800 y 1440 × 900.
 - [ ] **UX.4 · Recorrido real.** Crear, escribir, cambiar duración, deshacer, escuchar, guardar, reabrir y exportar en macOS; reparar los fallos reproducibles encontrados y documentar capturas de la ventana. *Hecho cuando:* el flujo completo termina sin bloqueos, build y pruebas verdes, y la puerta F4 queda lista para revisión.
 

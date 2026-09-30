@@ -21,6 +21,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private readonly TextBlock _inspectorDetails;
     private readonly ImmutableArray<ScorePartView> _availableParts;
     private readonly List<(Button Button, bool RequiresNote)> _inspectorButtons = [];
+    private readonly List<(Button Button, NoteValue Value)> _entryDurationButtons = [];
     private readonly List<Control> _themedControls = [];
     private readonly List<Border> _popupSurfaces = [];
     private Popup? _fileMenuPopup;
@@ -106,6 +107,14 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
 
     /// <summary>Gets the visible stop button.</summary>
     public Button StopButton { get; private set; } = null!;
+
+    /// <summary>Gets the primary note-writing control.</summary>
+    public Button NoteEntryButton { get; private set; } = null!;
+
+    /// <summary>Gets the in-editor instruction for the current input mode.</summary>
+    public string EntryGuideText => _entryGuide.Text ?? string.Empty;
+
+    private TextBlock _entryGuide = null!;
 
     /// <summary>Gets the current view selector.</summary>
     public Button ViewSelectorButton { get; private set; } = null!;
@@ -367,7 +376,30 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         row.Children.Add(CreateButton("▤", "Inspector", "view.toggle-right-panel"));
         row.Children.Add(CreateButton("▱", "Panel inferior", "view.toggle-bottom-panel"));
         row.Children.Add(CreateButton("◐", "Cambiar tema", "view.toggle-theme"));
-        return new Border { Child = row, Padding = new Thickness(10, 6), Height = 52 };
+        StackPanel entryRow = new() { Orientation = Orientation.Horizontal, Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center };
+        NoteEntryButton = CreateButton("Escribir notas", "Activa la entrada de notas (N)", "score.note-entry");
+        entryRow.Children.Add(NoteEntryButton);
+        entryRow.Children.Add(CreateButton("Seleccionar", "Vuelve a seleccionar (Esc)", "score.selection-mode"));
+        foreach ((string label, NoteValue value, string action) in new[]
+        {
+            ("16.ª", NoteValue.Sixteenth, "score.duration.sixteenth"),
+            ("Corchea", NoteValue.Eighth, "score.duration.eighth"),
+            ("Negra", NoteValue.Quarter, "score.duration.quarter"),
+            ("Blanca", NoteValue.Half, "score.duration.half"),
+            ("Redonda", NoteValue.Whole, "score.duration.whole"),
+        })
+        {
+            Button durationButton = CreateButton(label, $"Duración: {label}", action);
+            _entryDurationButtons.Add((durationButton, value));
+            entryRow.Children.Add(durationButton);
+        }
+
+        _entryGuide = CreateLabel("", 12);
+        _entryGuide.VerticalAlignment = VerticalAlignment.Center;
+        _entryGuide.TextWrapping = TextWrapping.Wrap;
+        StackPanel content = new() { Spacing = 4, Children = { row, entryRow, _entryGuide } };
+        return new Border { Child = content, Padding = new Thickness(10, 6), MinHeight = 104 };
     }
 
     private Border CreateNotationPalettePanel()
@@ -794,6 +826,20 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
 
     private void UpdateStatus()
     {
+        bool writing = _input.Mode == ScoreInputMode.NoteEntry;
+        NoteEntryButton.Content = writing ? "✓ Escribiendo notas" : "Escribir notas";
+        NoteEntryButton.FontWeight = writing ? FontWeight.Bold : FontWeight.Normal;
+        _entryGuide.Text = writing
+            ? "Haz clic en el pentagrama para colocar una nota o pulsa C D E F G A B. Esc termina."
+            : "Para empezar: pulsa «Escribir notas» y haz clic en el pentagrama.";
+        foreach ((Button button, NoteValue value) in _entryDurationButtons)
+        {
+            button.FontWeight = writing && _input.CurrentDuration.Value == value
+                ? FontWeight.Bold : FontWeight.Normal;
+            button.Opacity = writing ? 1 : 0.55;
+            button.IsEnabled = writing;
+        }
+
         ScoreInputCursor cursor = _input.Cursor;
         Score score = _input.CurrentScore;
         int measureIndex = 0;

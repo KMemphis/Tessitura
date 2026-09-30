@@ -490,6 +490,40 @@ public sealed class ScoreInputController
         NotifyStateChanged();
     }
 
+    /// <summary>Positions the cursor over a rest and primes its exact written pitch for the registered note action.</summary>
+    /// <param name="eventId">The rest underneath the pointer.</param>
+    /// <param name="staffPosition">Diatonic half-space steps above the staff's bottom line.</param>
+    /// <returns>The note-name action to execute, or null when the rest cannot accept a note.</returns>
+    public Step? PreparePointerNote(EventId eventId, int staffPosition)
+    {
+        if (Mode != ScoreInputMode.NoteEntry || staffPosition is < -4 or > 12)
+        {
+            return null;
+        }
+
+        EventLocation location = FindEventLocation(eventId);
+        if (location.Event is not Rest)
+        {
+            return null;
+        }
+
+        Cursor = new ScoreInputCursor(location.Context.StaffIndex, location.Context.VoiceNumber,
+            location.Position.Position);
+        int bottomLine = GetCursorClef() switch
+        {
+            Clef.Treble => 30, // E4
+            Clef.Bass => 18, // G2
+            Clef.Alto => 24, // F3
+            Clef.Tenor => 22, // D3
+            _ => throw new InvalidOperationException("Unsupported clef."),
+        };
+        int diatonic = bottomLine + staffPosition;
+        Step step = (Step)(diatonic % 7);
+        _lastPitch = new Pitch(step, 0, diatonic / 7);
+        _history.SetSelection(Selection.Empty);
+        return step;
+    }
+
     /// <summary>Writes the given sounding pitches as one chord at the cursor and advances by the current duration.</summary>
     /// <param name="midiNumbers">The MIDI note numbers played together.</param>
     /// <returns>Whether anything was written; only in note-entry mode.</returns>
