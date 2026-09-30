@@ -1,6 +1,6 @@
 # F0.12 · Dispositivos MIDI
 
-Fecha: 29 de septiembre de 2026. Estado: **decisión pendiente**.
+Fecha: 29 de septiembre de 2026. Estado: **decisión pendiente**. [CI de verificación](https://github.com/KMemphis/Tessitura/actions/runs/36654098552): verde en Windows, macOS y Ubuntu.
 
 ## Prueba reproducible
 
@@ -21,9 +21,11 @@ dotnet run --no-build --project tests/Tessitura.Benchmarks -- midi-probe loopbac
 | --- | --- | --- | --- |
 | macOS 27 arm64 local y macOS de CI | 0 entradas, 0 salidas físicas | Loopback virtual: Do4/canal 2/velocidad 100 recibido | Comprobado localmente y en CI |
 | Windows de CI | 0 entradas; salida `Microsoft GS Wavetable Synth` | Sin prueba física | Enumeración correcta, recepción pendiente |
-| Ubuntu de CI | `DllNotFoundException`: falta la biblioteca nativa de dispositivos de DryWetMIDI | Sin prueba física | Requiere otro backend |
+| Ubuntu de CI | `Supported=false` por `DllNotFoundException`: falta la biblioteca nativa de dispositivos de DryWetMIDI | Sin prueba física | Requiere otro backend |
 
 La [documentación de plataformas de DryWetMIDI](https://melanchall.github.io/drywetmidi/articles/dev/Supported-OS.html) limita su API Multimedia a Windows y macOS. La [primera ejecución de CI](https://github.com/KMemphis/Tessitura/actions/runs/36653810234) confirmó el fallo esperado en Ubuntu; el diagnóstico ahora lo informa como «no soportado» y conserva la matriz en verde sin fingir que se enumeraron puertos. Para Linux propongo un adaptador de la interfaz `IMidiPort` sobre el [secuenciador de ALSA](https://www.alsa-project.org/alsa-doc/alsa-lib/seq.html), que enumera clientes y puertos y recibe eventos MIDI. `alsa-lib` usa [LGPL 2.1](https://github.com/alsa-project/alsa-lib), cubierta por la autorización de licencias de F0.11. Esta sería una nueva dependencia de sistema y no se ha añadido ni implementado. Su empaquetado, recepción y estabilidad requieren validación física en Linux.
+
+`dotnet build` terminó con cero advertencias y errores; `dotnet test` pasó 34 pruebas sin fallos ni omisiones. En CI también pasaron compilación y pruebas en los tres sistemas, enumeración en Windows/macOS y recepción virtual en macOS. Ubuntu informó de forma estructurada la incompatibilidad conocida.
 
 ## Recomendación y decisión solicitada
 
