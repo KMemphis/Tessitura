@@ -19,7 +19,7 @@ Al inicio de cada sesión lee los tres. Si una tarea del plan contradice la defi
 5. El motor de grabado trabaja en espacios de pentagrama y emite listas de dibujo. Solo Tessitura.Rendering dibuja.
 6. Toda acción de usuario se registra en el ActionRegistry con identificador, nombre y atajo; la UI nunca modifica la partitura directamente.
 7. SkiaSharp se usa en la versión que trae Avalonia. Todas las versiones de paquetes se fijan en Directory.Packages.props.
-8. Solo dependencias con licencias MIT, BSD, Apache 2.0 u OFL. Nunca copies ni adaptes código de MuseScore ni de otro proyecto GPL; puedes estudiar documentación y diseño públicos.
+8. Se permiten dependencias con licencias MIT, BSD, Apache 2.0, OFL o LGPL, esta última autorizada expresamente para el producto el 29 de septiembre de 2026. Documenta las obligaciones de distribución de cada dependencia LGPL. Nunca copies ni adaptes código de MuseScore ni de otro proyecto GPL; puedes estudiar documentación y diseño públicos.
 
 # Estándares de código
 

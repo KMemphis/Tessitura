@@ -367,7 +367,7 @@ MNX es el sucesor de MusicXML que prepara el grupo comunitario de notación del 
 
 ## Stack tecnológico y dependencias
 
-Todas las dependencias propuestas son de código abierto con licencias permisivas (MIT u OFL), compatibles con un producto comercial cerrado.
+Las dependencias propuestas son de código abierto. Se permiten MIT, BSD, Apache 2.0, OFL y, por decisión expresa del 29 de septiembre de 2026, LGPL. Las obligaciones de distribución de cualquier componente LGPL se documentarán antes del lanzamiento.
 
 | Área | Elección | Motivo |
 | --- | --- | --- |
@@ -453,6 +453,7 @@ El mayor riesgo es subestimar el motor de grabado; por eso se construye primero 
 | Avalonia, SkiaSharp, HarfBuzzSharp | MIT | Incluir los avisos de copyright |
 | CommunityToolkit.Mvvm, MeltySynth, DryWetMIDI, Velopack | MIT | Incluir los avisos de copyright |
 | Bravura y fuente de texto | SIL OFL 1.1 | Se pueden incrustar y distribuir; no vender la fuente por separado |
+| OpenAL Soft, si se elige | LGPL 2 o posterior | Documentar y cumplir las obligaciones de distribución antes del lanzamiento |
 | Especificación MusicXML | Licencia de especificación del W3C Community Group | Libre de implementar |
 
 Si la aplicación va a ser propietaria, no se puede copiar código de MuseScore (GPL); sí se puede estudiar su diseño y documentación. Queda abierta la decisión de la licencia de Tessitura: propietaria, de código abierto o mixta (núcleo abierto con funciones profesionales de pago).
