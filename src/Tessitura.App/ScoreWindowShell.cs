@@ -17,6 +17,8 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private readonly Grid _layout;
     private readonly TextBlock _statusText;
     private readonly TextBlock _inspectorText;
+    private readonly TextBlock _inspectorDetails;
+    private readonly List<(Button Button, bool RequiresNote)> _inspectorButtons = [];
     private readonly List<Control> _themedControls = [];
     private readonly List<Border> _popupSurfaces = [];
     private Popup? _viewMenuPopup;
@@ -38,7 +40,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         TopBar = CreateTopBar();
         LeftPanel = CreateSidePanel("Paletas", ["Claves", "Armaduras", "Compases", "Alteraciones",
             "Dinámicas", "Articulaciones", "Líneas", "Texto"], 200);
-        RightPanel = CreateInspectorPanel(out _inspectorText);
+        RightPanel = CreateInspectorPanel(out _inspectorText, out _inspectorDetails);
         BottomPanel = CreateBottomPanel();
         BottomPanel.IsVisible = false;
         StatusBar = CreateStatusBar(out _statusText);
@@ -105,6 +107,9 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     /// <summary>Gets the visible status line.</summary>
     public string StatusText => _statusText.Text ?? string.Empty;
 
+    /// <summary>Gets the selected event properties displayed by the inspector.</summary>
+    public string InspectorDetailsText => _inspectorDetails.Text ?? string.Empty;
+
     /// <summary>Defines all commands exposed by the window chrome.</summary>
     public ImmutableArray<ActionDefinition> CreateActions() =>
     [
@@ -119,6 +124,25 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         new("view.toggle-bottom-panel", "Mostrar u ocultar panel inferior", "Ctrl+Shift+B",
             () => BottomPanel.IsVisible = !BottomPanel.IsVisible),
         new("view.toggle-theme", "Cambiar tema claro u oscuro", "Ctrl+Shift+T", ToggleTheme),
+        new("inspector.duration.whole", "Cambiar duración a redonda", "Alt+1",
+            () => _input.ChangeSelectedDuration(new Duration(NoteValue.Whole, 0))),
+        new("inspector.duration.half", "Cambiar duración a blanca", "Alt+2",
+            () => _input.ChangeSelectedDuration(new Duration(NoteValue.Half, 0))),
+        new("inspector.duration.quarter", "Cambiar duración a negra", "Alt+3",
+            () => _input.ChangeSelectedDuration(new Duration(NoteValue.Quarter, 0))),
+        new("inspector.duration.eighth", "Cambiar duración a corchea", "Alt+4",
+            () => _input.ChangeSelectedDuration(new Duration(NoteValue.Eighth, 0))),
+        new("inspector.duration.sixteenth", "Cambiar duración a semicorchea", "Alt+5",
+            () => _input.ChangeSelectedDuration(new Duration(NoteValue.Sixteenth, 0))),
+        new("inspector.dot.toggle", "Alternar puntillo", "Alt+6", ToggleSelectedDot),
+        new("inspector.alteration.flat", "Aplicar bemol a la selección", "Alt+7",
+            () => SetSelectedAlteration(-1)),
+        new("inspector.alteration.natural", "Aplicar becuadro a la selección", "Alt+8",
+            () => SetSelectedAlteration(0)),
+        new("inspector.alteration.sharp", "Aplicar sostenido a la selección", "Alt+9",
+            () => SetSelectedAlteration(1)),
+        new("inspector.tie.toggle", "Alternar ligadura de unión", "Alt+0",
+            () => _input.ToggleSelectedTie()),
     ];
 
     /// <summary>Connects visible controls to the central action registry.</summary>
@@ -191,15 +215,51 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         return new Border { Width = width, Child = new ScrollViewer { Content = stack } };
     }
 
-    private Border CreateInspectorPanel(out TextBlock inspectorText)
+    private Border CreateInspectorPanel(out TextBlock inspectorText, out TextBlock inspectorDetails)
     {
         StackPanel stack = new() { Spacing = 10, Margin = new Thickness(14) };
         stack.Children.Add(CreateLabel("Inspector", 17, FontWeight.SemiBold));
         inspectorText = CreateLabel("Selecciona un elemento", 13);
         stack.Children.Add(inspectorText);
+        inspectorDetails = CreateLabel(string.Empty, 13);
+        stack.Children.Add(inspectorDetails);
+        stack.Children.Add(CreateLabel("Duración", 14, FontWeight.SemiBold));
+        stack.Children.Add(CreateInspectorButtonRow(
+        [
+            ("Redonda", "inspector.duration.whole", false),
+            ("Blanca", "inspector.duration.half", false),
+            ("Negra", "inspector.duration.quarter", false),
+        ]));
+        stack.Children.Add(CreateInspectorButtonRow(
+        [
+            ("Corchea", "inspector.duration.eighth", false),
+            ("16.ª", "inspector.duration.sixteenth", false),
+            ("Puntillo", "inspector.dot.toggle", false),
+        ]));
+        stack.Children.Add(CreateLabel("Nota", 14, FontWeight.SemiBold));
+        stack.Children.Add(CreateInspectorButtonRow(
+        [
+            ("♭", "inspector.alteration.flat", true),
+            ("♮", "inspector.alteration.natural", true),
+            ("♯", "inspector.alteration.sharp", true),
+            ("Ligadura", "inspector.tie.toggle", true),
+        ]));
         stack.Children.Add(CreateLabel("Estilo", 17, FontWeight.SemiBold));
         stack.Children.Add(CreateLabel("Ajustes de la partitura", 13));
         return new Border { Width = 240, Child = new ScrollViewer { Content = stack } };
+    }
+
+    private Control CreateInspectorButtonRow((string Label, string ActionId, bool RequiresNote)[] items)
+    {
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 3 };
+        foreach ((string label, string actionId, bool requiresNote) in items)
+        {
+            Button button = CreateButton(label, label, actionId, false);
+            _inspectorButtons.Add((button, requiresNote));
+            row.Children.Add(button);
+        }
+
+        return row;
     }
 
     private Border CreateBottomPanel()
@@ -342,7 +402,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         Score score = _input.CurrentScore;
         int measureIndex = 0;
         Fraction measureStart = Fraction.Zero;
-        for (; measureIndex < score.Measures.Length - 1; measureIndex++)
+        for (; measureIndex < score.Measures.Length; measureIndex++)
         {
             Fraction measureEnd = measureStart + score.Measures[measureIndex].TimeSignature.Length;
             if (cursor.Position < measureEnd)
@@ -353,7 +413,8 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             measureStart = measureEnd;
         }
 
-        TimeSignature signature = score.Measures[measureIndex].TimeSignature;
+        bool cursorAtEnd = measureIndex == score.Measures.Length;
+        TimeSignature signature = score.Measures[cursorAtEnd ? measureIndex - 1 : measureIndex].TimeSignature;
         Fraction beatPosition = (cursor.Position - measureStart) /
             new Fraction(1, signature.Denominator);
         Fraction beatNumber = beatPosition + Fraction.One;
@@ -373,11 +434,114 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         }
 
         int selectedCount = _input.CurrentSelection.Items.Length;
+        ScoreEventProperties? properties = _input.SelectedEventProperties;
+        int displayedMeasure = cursorAtEnd
+            ? score.Measures[^1].Number + 1
+            : score.Measures[measureIndex].Number;
         _statusText.Text = $"{mode}  ·  {duration}  ·  Voz {cursor.VoiceNumber}  ·  " +
-            $"Compás {score.Measures[measureIndex].Number}  ·  Tiempo {beatNumber}  ·  " +
+            $"Compás {displayedMeasure}  ·  Tiempo {beatNumber}  ·  " +
             $"Selección: {selectedCount}";
-        _inspectorText.Text = selectedCount == 0
-            ? "Selecciona un elemento"
-            : selectedCount == 1 ? "1 elemento seleccionado" : $"{selectedCount} elementos seleccionados";
+        _inspectorText.Text = properties is null
+            ? selectedCount == 0 ? "Selecciona un elemento" : "Selecciona un elemento individual"
+            : $"{properties.Kind}  ·  Compás {properties.MeasureNumber}  ·  Voz {properties.VoiceNumber}";
+        _inspectorDetails.Text = properties is null
+            ? string.Empty
+            : FormatEventProperties(properties);
+        bool hasSelection = properties is not null;
+        bool hasSelectedNote = properties is { HasSelectedNote: true };
+        foreach ((Button button, bool requiresNote) in _inspectorButtons)
+        {
+            button.IsEnabled = hasSelection && (!requiresNote || hasSelectedNote);
+            button.Opacity = button.IsEnabled ? 1 : 0.45;
+        }
+    }
+
+    private static string FormatEventProperties(ScoreEventProperties properties)
+    {
+        string duration = FormatDuration(properties.Duration);
+        if (properties.Notes.IsDefaultOrEmpty)
+        {
+            return $"{properties.Kind}  ·  {duration}";
+        }
+
+        if (properties.Notes.Length == 1)
+        {
+            return $"{GetPitchName(properties.Notes[0].Pitch)}  ·  {duration}";
+        }
+
+        System.Text.StringBuilder pitches = new();
+        foreach (Note note in properties.Notes)
+        {
+            if (pitches.Length > 0)
+            {
+                pitches.Append(", ");
+            }
+
+            pitches.Append(GetPitchName(note.Pitch));
+        }
+
+        return $"{pitches}  ·  {duration}";
+    }
+
+    private static string FormatDuration(Duration duration)
+    {
+        string name = duration.Value switch
+        {
+            NoteValue.Whole => "Redonda",
+            NoteValue.Half => "Blanca",
+            NoteValue.Quarter => "Negra",
+            NoteValue.Eighth => "Corchea",
+            NoteValue.Sixteenth => "Semicorchea",
+            _ => duration.Value.ToString(),
+        };
+        return duration.Dots switch
+        {
+            0 => name,
+            1 => name + " con puntillo",
+            _ => name + " con " + duration.Dots + " puntillos",
+        };
+    }
+
+    private static string GetPitchName(Pitch pitch)
+    {
+        string step = pitch.Step switch
+        {
+            Step.C => "Do",
+            Step.D => "Re",
+            Step.E => "Mi",
+            Step.F => "Fa",
+            Step.G => "Sol",
+            Step.A => "La",
+            Step.B => "Si",
+            _ => pitch.Step.ToString(),
+        };
+        string alteration = pitch.Alter switch
+        {
+            -2 => " doble bemol",
+            -1 => " bemol",
+            0 => string.Empty,
+            1 => " sostenido",
+            2 => " doble sostenido",
+            _ => $" alteración {pitch.Alter}",
+        };
+        return $"{step}{alteration} {pitch.Octave}";
+    }
+
+    private void ToggleSelectedDot()
+    {
+        if (_input.SelectedEventProperties is ScoreEventProperties properties)
+        {
+            _input.ChangeSelectedDotCount(properties.Duration.Dots == 0 ? 1 : 0);
+        }
+    }
+
+    private void SetSelectedAlteration(int alteration)
+    {
+        if (_input.SelectedEventProperties is not ScoreEventProperties { HasSelectedNote: true } properties)
+        {
+            return;
+        }
+
+        _input.ChangeSelectedAlteration(alteration);
     }
 }

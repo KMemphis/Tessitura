@@ -78,6 +78,31 @@ public sealed class ScoreWindowShellTests
     }
 
     [Fact]
+    public void StatusShowsNextMeasureAtTheBarline()
+    {
+        ScoreInputController input = CreateInput();
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-shell-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            input.EnterNoteEntry();
+            for (int noteIndex = 0; noteIndex < 4; noteIndex++)
+            {
+                Assert.True(actions.TryExecute("score.note.c"));
+            }
+
+            Assert.Contains("Compás 2  ·  Tiempo 1", shell.StatusText);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
     public void WorkspaceColorChangesWithoutChangingPaperColor()
     {
         using SKBitmap bitmap = new(720, 920);

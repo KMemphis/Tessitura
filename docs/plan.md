@@ -57,7 +57,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F2.5 · Detección de clics y selección.** Índice espacial por página y selección de elemento, rango y lista. *Hecho cuando:* un clic sobre una cabeza selecciona su nota y `Shift+clic` extiende un rango.
 - [x] **F2.6 · Ciclo de actualización.** Comando, maquetación en segundo plano, invalidación de páginas y repintado. *Hecho cuando (criterio aprobado el 2026-09-30):* el procesamiento de una nota en la partitura de referencia tarda menos de 16 ms y la página se presenta en el siguiente cuadro de composición. La meta original de menos de 16 ms hasta verla permanece en la definición para la versión 1.0.
 - [x] **F2.7 · Estructura de la ventana.** Barra superior, paneles laterales plegables, barra de estado y temas claro y oscuro. *Hecho cuando:* coincide con la distribución de la definición.
-- [ ] **F2.8 · Inspector.** Propiedades del elemento seleccionado, editables mediante comandos. *Hecho cuando:* cambiar la duración desde el inspector se puede deshacer.
+- [x] **F2.8 · Inspector.** Propiedades del elemento seleccionado, editables mediante comandos. *Hecho cuando:* cambiar la duración desde el inspector se puede deshacer.
 - [ ] **F2.9 · Paletas básicas.** Claves, armaduras, compases y alteraciones. *Hecho cuando:* cada elemento se aplica a la selección con un clic.
 - [ ] **F2.10 · Formato .tess.** ZIP con manifiesto versionado, guardado atómico, marco de migraciones y autoguardado cada 2 minutos. *Hecho cuando:* guardar y abrir devuelve una partitura idéntica, y un archivo de versión anterior se migra.
 - [ ] **F2.11 · Inicio y asistente.** Pantalla de inicio con recientes y asistente de nueva partitura con plantillas de piano, cuarteto de cuerda y coro SATB. *Hecho cuando:* se crea cada plantilla en menos de cinco clics.
@@ -112,5 +112,6 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [ ] **F5.7 · Decisión: informes de fallos.** Proponer mecanismo opcional de informes de fallos con consentimiento explícito. *Hecho cuando:* existe `docs/decisiones/fallos.md`; el agente se detiene.
 - [ ] **F5.8 · Beta pública.** Publicar la beta, clasificar las incidencias y corregir las bloqueantes. *Hecho cuando:* cero incidencias bloqueantes abiertas durante dos semanas.
 - [ ] **F5.9 · Verificación final.** Medir cada objetivo de la 1.0 de la definición y documentar los resultados. *Hecho cuando:* informe en `docs/decisiones/objetivos-1.0.md` con todos los objetivos cumplidos.
+- [ ] **F5.10 · Pulido visual de la aplicación.** Definir y aplicar una dirección visual coherente a la ventana, controles, jerarquía tipográfica, espaciado, iconos, estados y temas claro/oscuro. *Hecho cuando:* se muestran capturas de las pantallas principales en las tres plataformas y el propietario aprueba el resultado.
 
 **Puerta F5:** objetivos medibles de la 1.0 cumplidos y aprobados por ti. Lanzamiento.

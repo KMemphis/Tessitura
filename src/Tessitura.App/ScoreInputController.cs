@@ -21,6 +21,18 @@ public enum ScoreInputMode
 /// <param name="Position">The exact position on the score timeline in whole-note units.</param>
 public readonly record struct ScoreInputCursor(int StaffIndex, int VoiceNumber, Fraction Position);
 
+/// <summary>Describes the single selected event shown in the property inspector.</summary>
+public sealed record ScoreEventProperties(
+    EventId EventId,
+    string Kind,
+    Duration Duration,
+    ImmutableArray<Note> Notes,
+    bool HasSelectedNote,
+    int StaffIndex,
+    int MeasureNumber,
+    int VoiceNumber,
+    Fraction Position);
+
 /// <summary>Applies keyboard note-entry actions to an immutable score history.</summary>
 public sealed class ScoreInputController
 {
@@ -85,6 +97,39 @@ public sealed class ScoreInputController
 
     /// <summary>Gets the pitch of the most recently entered note, if any.</summary>
     public Pitch? LastEnteredPitch => _lastPitch;
+
+    /// <summary>Gets the selected event's editable properties, or null for no single event.</summary>
+    public ScoreEventProperties? SelectedEventProperties
+    {
+        get
+        {
+            if (CurrentSelection.Items.Length != 1)
+            {
+                return null;
+            }
+
+            SelectionItem item = CurrentSelection.Items[0];
+            EventLocation location = FindEventLocation(item.EventId);
+            ImmutableArray<Note> notes = location.Event is Chord chord
+                ? item.NoteIndex is int noteIndex
+                    ? [chord.Notes[noteIndex]]
+                    : chord.Notes
+                : ImmutableArray<Note>.Empty;
+            string kind = location.Event switch
+            {
+                Chord { Notes.Length: 1 } => "Nota",
+                Chord => "Acorde",
+                Rest => "Silencio",
+                _ => "Evento",
+            };
+            bool hasSelectedNote = location.Event is Chord selectedChord &&
+                (item.NoteIndex is not null || selectedChord.Notes.Length == 1);
+            return new ScoreEventProperties(location.Event.Id, kind, location.Event.Duration, notes,
+                hasSelectedNote,
+                location.Context.StaffIndex, CurrentScore.Measures[location.Context.MeasureIndex].Number,
+                location.Context.VoiceNumber, location.Position.Position);
+        }
+    }
 
     /// <summary>Creates the registered actions for note entry and its keyboard shortcuts.</summary>
     /// <returns>The actions that should be added to the application's action registry.</returns>
@@ -255,6 +300,76 @@ public sealed class ScoreInputController
         return false;
     }
 
+    /// <summary>Changes the duration of the single selected score event.</summary>
+    /// <param name="duration">The written duration.</param>
+    /// <returns>Whether a selected event was changed.</returns>
+    public bool ChangeSelectedDuration(Duration duration) =>
+        ApplySelectedEvent(properties => new ChangeDurationCommand(properties.EventId, duration));
+
+    /// <summary>Changes the dot count of the single selected score event.</summary>
+    /// <param name="dotCount">The number of augmentation dots.</param>
+    /// <returns>Whether a selected event was changed.</returns>
+    public bool ChangeSelectedDotCount(int dotCount) =>
+        ApplySelectedEvent(properties => new ChangeDotCountCommand(properties.EventId, dotCount));
+
+    /// <summary>Changes the written accidental on the selected note.</summary>
+    /// <param name="alteration">The chromatic alteration in semitones.</param>
+    /// <returns>Whether a note was selected and changed.</returns>
+    public bool ChangeSelectedAlteration(int alteration)
+    {
+        if (CurrentSelection.Items.Length != 1)
+        {
+            return false;
+        }
+
+        SelectionItem item = CurrentSelection.Items[0];
+        EventLocation location = FindEventLocation(item.EventId);
+        if (location.Event is not Chord chord)
+        {
+            return false;
+        }
+
+        int noteIndex = item.NoteIndex ?? (chord.Notes.Length == 1 ? 0 : -1);
+        if (noteIndex < 0)
+        {
+            return false;
+        }
+
+        Apply(new ChangeAlterationCommand(item.EventId, noteIndex, alteration),
+            location.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
+
+    /// <summary>Toggles the tie on the selected note.</summary>
+    /// <returns>Whether a note was selected and changed.</returns>
+    public bool ToggleSelectedTie()
+    {
+        if (CurrentSelection.Items.Length != 1)
+        {
+            return false;
+        }
+
+        SelectionItem item = CurrentSelection.Items[0];
+        EventLocation location = FindEventLocation(item.EventId);
+        if (location.Event is not Chord chord)
+        {
+            return false;
+        }
+
+        int noteIndex = item.NoteIndex ?? (chord.Notes.Length == 1 ? 0 : -1);
+        if (noteIndex < 0)
+        {
+            return false;
+        }
+
+        bool tiedToNext = !chord.Notes[noteIndex].TiedToNext;
+        Apply(new ChangeTieCommand(item.EventId, noteIndex, tiedToNext),
+            location.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
+
     private void WriteNote(Step step)
     {
         if (Mode != ScoreInputMode.NoteEntry)
@@ -360,7 +475,8 @@ public sealed class ScoreInputController
                             {
                                 return new EventLocation(
                                     musicEvent,
-                                    new MusicalSelectionPoint(staffIndex, measureStart + musicEvent.Onset));
+                                    new MusicalSelectionPoint(staffIndex, measureStart + musicEvent.Onset),
+                                    new EditContext(staffIndex, measureIndex, voice.Number));
                             }
                         }
                     }
@@ -523,12 +639,26 @@ public sealed class ScoreInputController
         NotifyStateChanged();
     }
 
-    private void Apply(IScoreCommand command, EditContext context)
+    private bool ApplySelectedEvent(Func<ScoreEventProperties, IScoreCommand> createCommand)
+    {
+        ScoreEventProperties? properties = SelectedEventProperties;
+        if (properties is not ScoreEventProperties selected)
+        {
+            return false;
+        }
+
+        EventLocation location = FindEventLocation(selected.EventId);
+        Apply(createCommand(selected), location.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
+
+    private void Apply(IScoreCommand command, EditContext context, Selection? selection = null)
     {
         Score next = command.Apply(CurrentScore, context);
         _undoStates.Push(CaptureState());
         _redoStates.Clear();
-        _history.Push(next, command.Description, Selection.Empty);
+        _history.Push(next, command.Description, selection ?? Selection.Empty);
     }
 
     private EditorStateSnapshot CaptureState() => new(
@@ -556,5 +686,8 @@ public sealed class ScoreInputController
         Pitch? LastPitch,
         int LastNoteIndex);
 
-    private readonly record struct EventLocation(MusicEvent Event, MusicalSelectionPoint Position);
+    private readonly record struct EventLocation(
+        MusicEvent Event,
+        MusicalSelectionPoint Position,
+        EditContext Context);
 }

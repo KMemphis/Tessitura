@@ -253,3 +253,11 @@
 - Se añadieron temas claro y oscuro para la interfaz y la ventana nativa. El espacio alrededor de la partitura cambia de color y el papel permanece blanco. La barra de estado sigue modo, duración, voz, compás, tiempo y número de elementos seleccionados con posiciones `Fraction`.
 - Cuatro pruebas nuevas verifican distribución, acciones de plegado y tema, estado musical y colores de la página. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 160 pruebas, sin fallos ni omisiones. Se inspeccionaron las capturas de la ventana de Tessitura por identificador de proceso, sin capturar la pantalla completa: `docs/capturas/f2.7-macos-dark-window.png` y `docs/capturas/f2.7-macos-light-window.png`.
 - Siguiente tarea: F2.8, inspector editable mediante comandos.
+
+## 2026-09-30 · F2.8 Inspector
+
+- El inspector ahora muestra tipo, compás, voz, altura, duración y puntillos del evento seleccionado. Sus controles cambian duración, puntillo, alteración y ligadura mediante comandos existentes; la selección de acordes no inventa una nota única que editar.
+- Tres pruebas nuevas verifican cambio de duración con deshacer y selección conservada, los controles de puntillo/alteración/ligadura y la selección de acordes. Una cuarta prueba verifica que el estado del cursor avance al compás siguiente al terminar el actual.
+- Se probó la ventana de Tessitura en macOS: cambiar el silencio seleccionado de redonda a negra desde el inspector actualiza la partitura y conserva la selección. La captura corresponde únicamente a la ventana: `docs/capturas/f2.8-macos-inspector-window.png`.
+- `dotnet build Tessitura.sln --configuration Release --no-restore` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 164 pruebas, sin fallos ni omisiones.
+- Tras la observación del propietario sobre el acabado visual, se añadió F5.10 para hacer explícito el pulido visual de la aplicación y revisar capturas en Windows, macOS y Linux. Siguiente tarea: F2.9, paletas básicas.
