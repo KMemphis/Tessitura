@@ -9,5 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/Tessitura.Engraving/Tessitura.Engraving.csproj" />
     <ProjectReference Include="../../src/Tessitura.Smufl/Tessitura.Smufl.csproj" />
+    <ProjectReference Include="../../src/Tessitura.App/Tessitura.App.csproj" />
+    <ProjectReference Include="../../src/Tessitura.Rendering/Tessitura.Rendering.csproj" />
   </ItemGroup>
 </Project>

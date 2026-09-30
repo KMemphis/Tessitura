@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Avalonia.Skia" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Tessitura.Rendering/Tessitura.Rendering.csproj" />
     <ProjectReference Include="../Tessitura.Editing/Tessitura.Editing.csproj" />
     <ProjectReference Include="../Tessitura.Playback/Tessitura.Playback.csproj" />

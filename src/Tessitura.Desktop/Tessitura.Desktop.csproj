@@ -3,6 +3,9 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Tessitura.App/Tessitura.App.csproj" />
   </ItemGroup>
 </Project>
