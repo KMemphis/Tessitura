@@ -243,16 +243,44 @@ public sealed record Note(Pitch Pitch, bool TiedToNext = false);
 /// <param name="Measures">The global measures.</param>
 /// <param name="Content">The content of each staff and measure.</param>
 /// <param name="Attachments">Dynamics, articulations and other marks anchored to events; default means none.</param>
+/// <param name="Spanners">Slurs and lines that run from one event to another; default means none.</param>
 public sealed record Score(
     ScoreMetadata Metadata,
     ImmutableArray<Instrument> Instruments,
     ImmutableArray<Measure> Measures,
     ImmutableDictionary<StaffMeasureKey, StaffMeasure> Content,
-    ImmutableArray<Attachment> Attachments = default)
+    ImmutableArray<Attachment> Attachments = default,
+    ImmutableArray<Spanner> Spanners = default)
 {
+    /// <summary>Gets the spanners, empty when none were given.</summary>
+    public ImmutableArray<Spanner> SpannerList => Spanners.IsDefault ? ImmutableArray<Spanner>.Empty : Spanners;
+
     /// <summary>Gets the attachments, empty when none were given.</summary>
     public ImmutableArray<Attachment> AttachmentList => Attachments.IsDefault ? ImmutableArray<Attachment>.Empty : Attachments;
 }
+
+/// <summary>Names the kinds of line that run from one event to another.</summary>
+public enum SpannerKind
+{
+    /// <summary>A slur or phrase mark.</summary>
+    Slur,
+    /// <summary>A crescendo hairpin.</summary>
+    Crescendo,
+    /// <summary>A diminuendo hairpin.</summary>
+    Diminuendo,
+    /// <summary>An 8va line: sounds an octave higher than written.</summary>
+    OctaveUp,
+    /// <summary>An 8vb line: sounds an octave lower than written.</summary>
+    OctaveDown,
+    /// <summary>A pedal line.</summary>
+    Pedal,
+}
+
+/// <summary>A mark drawn from one event to another, anchored by their stable identifiers so that it survives edits.</summary>
+/// <param name="Start">The event where the mark begins.</param>
+/// <param name="End">The event where the mark ends, in the same staff.</param>
+/// <param name="Kind">The kind of mark.</param>
+public sealed record Spanner(EventId Start, EventId End, SpannerKind Kind);
 
 /// <summary>Names a dynamic level, from very soft to very loud.</summary>
 public enum DynamicLevel

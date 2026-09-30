@@ -106,3 +106,31 @@ public sealed class TextPopoverTests
         return Smufl.SmuflMetadata.Load(Path.Combine(root, "assets", "fonts", "Bravura.json"), Path.Combine(root, "assets", "fonts", "smufl_glyph_names.json"));
     }
 }
+
+public sealed class SlurEditingTests
+{
+    [Fact]
+    public void SlurActionJoinsTheFirstAndLastSelectedEventsAndCanBeUndone()
+    {
+        Chord[] notes = [.. Enumerable.Range(0, 3).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 4), new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.C, 0, 4 + i))], StemDirection.Auto))];
+        Score score = new(new ScoreMetadata("T", ""), [new Instrument("I", [new Staff("S")])], [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1,
+                [.. notes, new Rest(new EventId(Guid.NewGuid()), new Fraction(3, 4), new Duration(NoteValue.Quarter, 0))])])));
+        ScoreInputController input = new(score);
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        ActionRegistry actions = ActionRegistry.LoadOrCreate(input.CreateActions().AddRange(shell.CreateActions()),
+            Path.Combine(Path.GetTempPath(), $"tessitura-slur-{Guid.NewGuid():N}.json"));
+        shell.AttachActionRegistry(actions);
+
+        input.SelectEvent(notes[0].Id);
+        Assert.False(input.SlurSelection(), "one event cannot be slurred");
+        input.SelectEvent(notes[2].Id, extendRange: true);
+        Assert.True(actions.TryExecute("spanner.slur"));
+
+        Spanner slur = Assert.Single(input.CurrentScore.SpannerList);
+        Assert.Equal((notes[0].Id, notes[2].Id, SpannerKind.Slur), (slur.Start, slur.End, slur.Kind));
+        input.Undo();
+        Assert.Empty(input.CurrentScore.SpannerList);
+    }
+}

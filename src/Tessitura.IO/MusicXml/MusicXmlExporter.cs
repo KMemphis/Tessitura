@@ -193,7 +193,7 @@ public static class MusicXmlExporter
 
                 foreach (MusicEvent musicEvent in voice.Events)
                 {
-                    AddTree(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties, Fraction.One, 1, 1, null, attachments);
+                    AddTree(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties, Fraction.One, 1, 1, null, attachments, score);
                 }
             }
 
@@ -256,7 +256,8 @@ public static class MusicXmlExporter
     // Walks tuplet groups: every leaf gets the combined time modification of its enclosing groups, and the first
     // and last leaf of a group carry the tuplet start and stop marks.
     private static void AddTree(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber, int staffCount, int divisions,
-        HashSet<Pitch> openTies, Fraction scale, int actual, int normal, string? bracket, ILookup<EventId, Attachment> attachments)
+        HashSet<Pitch> openTies, Fraction scale, int actual, int normal, string? bracket, ILookup<EventId, Attachment> attachments,
+        Score spanners)
     {
         if (musicEvent is TupletGroup group)
         {
@@ -265,13 +266,14 @@ public static class MusicXmlExporter
             {
                 string? mark = index == 0 ? "start" : index == childCount - 1 ? "stop" : null;
                 AddTree(measure, group.Children[index], staff, voiceNumber, staffCount, divisions, openTies,
-                    scale * group.Ratio, actual * group.Actual, normal * group.Normal, mark, attachments);
+                    scale * group.Ratio, actual * group.Actual, normal * group.Normal, mark, attachments, spanners);
             }
 
             return;
         }
 
         List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale, attachments);
+        AddSlurMarks(written, musicEvent.Id, spanners);
         if (actual == normal)
         {
             return;
@@ -281,6 +283,32 @@ public static class MusicXmlExporter
         for (int index = 0; index < written.Count; index++)
         {
             InsertTimeModification(written[index], actual, normal, index == 0 ? bracket : null);
+        }
+    }
+
+    // Slurs are numbered by their position in the score's spanner list, so overlapping slurs keep distinct numbers.
+    private static void AddSlurMarks(List<XElement> written, EventId id, Score score)
+    {
+        if (written.Count == 0)
+        {
+            return;
+        }
+
+        for (int index = 0; index < score.SpannerList.Length; index++)
+        {
+            Spanner spanner = score.SpannerList[index];
+            if (spanner.Kind != SpannerKind.Slur || (spanner.Start != id && spanner.End != id))
+            {
+                continue;
+            }
+
+            XElement notations = written[0].Element("notations") ?? new XElement("notations");
+            notations.Add(new XElement("slur", new XAttribute("type", spanner.Start == id ? "start" : "stop"),
+                new XAttribute("number", (index % 6) + 1), new XAttribute("placement", "above")));
+            if (notations.Parent is null)
+            {
+                written[0].Add(notations);
+            }
         }
     }
 

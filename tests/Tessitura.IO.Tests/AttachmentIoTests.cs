@@ -101,6 +101,35 @@ public sealed class AttachmentIoTests
         Assert.Contains(again.AttachmentList.OfType<ChordSymbolAttachment>(), c => c.Display == "F♯m7/A");
     }
 
+    [Fact]
+    public void SlursSurviveTessAndMusicXmlAndDuplicatesAreIgnored()
+    {
+        (Score score, Chord[] notes) = Create();
+        EditContext context = new(0, 0, 1);
+        Spanner slur = new(notes[0].Id, notes[1].Id, SpannerKind.Slur);
+        Score slurred = new AddSpannerCommand(slur).Apply(score, context);
+        Score twice = new AddSpannerCommand(slur).Apply(slurred, context);
+        string path = Path.Combine(Path.GetTempPath(), $"tessitura-slur-{Guid.NewGuid():N}.tess");
+        try
+        {
+            TessFile.Save(path, slurred, new Tessitura.Engraving.Style { StaffLineThickness = 0.1 });
+            Assert.Equal([slur], TessFile.Open(path).Score.SpannerList.AsEnumerable());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        System.Xml.Linq.XDocument document = MusicXmlExporter.ToDocument(slurred);
+        Assert.Empty(MusicXmlSchema.Validate(document));
+        Score again = MusicXmlImporter.Import(document).Score;
+        Spanner imported = Assert.Single(again.SpannerList);
+        Assert.Equal(SpannerKind.Slur, imported.Kind);
+        Assert.Single(twice.SpannerList);
+        Assert.Empty(new RemoveSpannersCommand(notes[0].Id, SpannerKind.Slur).Apply(slurred, context).SpannerList);
+        Assert.Throws<ArgumentException>(() => new AddSpannerCommand(new Spanner(notes[0].Id, notes[0].Id, SpannerKind.Slur)).Apply(score, context));
+    }
+
     private static (Score, Chord[]) Create()
     {
         Chord[] notes = [.. Enumerable.Range(0, 2).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 4), new Duration(NoteValue.Quarter, 0),

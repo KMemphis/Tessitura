@@ -83,13 +83,15 @@ public static class MusicXmlImporter
     private sealed record RawNote(
         int Measure, int Staff, string Voice, Fraction Onset, Fraction Duration, Duration? Notated,
         bool IsRest, bool IsChordMember, Pitch? Pitch, bool TieStart,
-        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null, ImmutableArray<Attachment> Extra = default);
+        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null, ImmutableArray<Attachment> Extra = default, ImmutableArray<(int Number, bool Start)> Slurs = default);
 
     private sealed class Importer
     {
         private readonly List<MusicXmlImportWarning> _warnings = [];
         private readonly HashSet<string> _seenOnce = [];
         private readonly List<Attachment> _attachments = [];
+        private readonly List<Spanner> _spanners = [];
+        private readonly Dictionary<(string Part, int Number), EventId> _openSlurs = [];
         private DynamicLevel? _pendingDynamic;
         private readonly List<Attachment> _pendingAttachments = [];
 
@@ -197,6 +199,11 @@ public static class MusicXmlImporter
                 score = score with { Attachments = [.. _attachments] };
             }
 
+            if (_spanners.Count > 0)
+            {
+                score = score with { Spanners = [.. _spanners] };
+            }
+
             return new MusicXmlImportResult(score, [.. _warnings]);
         }
 
@@ -269,6 +276,21 @@ public static class MusicXmlImporter
                 else
                 {
                     continue;
+                }
+
+                if (!note.Slurs.IsDefaultOrEmpty)
+                {
+                    foreach ((int number, bool isStart) in note.Slurs)
+                    {
+                        if (isStart)
+                        {
+                            _openSlurs[(part.Id, number)] = eventId;
+                        }
+                        else if (_openSlurs.Remove((part.Id, number), out EventId startId) && startId != eventId)
+                        {
+                            _spanners.Add(new Spanner(startId, eventId, SpannerKind.Slur));
+                        }
+                    }
                 }
 
                 if (!note.Marks.IsDefaultOrEmpty)
@@ -619,7 +641,8 @@ public static class MusicXmlImporter
             }
 
             data.Notes.Add(new RawNote(measureIndex, staff, voice, onset,
-                duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic, extra));
+                duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic, extra,
+                isChord ? default : ReadSlurs(note)));
         }
 
         private Pitch? ReadPitch(XElement note, string where)
@@ -653,6 +676,22 @@ public static class MusicXmlImporter
             }
 
             return new Pitch(step, alter, octave);
+        }
+
+        private static ImmutableArray<(int Number, bool Start)> ReadSlurs(XElement note)
+        {
+            ImmutableArray<(int, bool)>.Builder slurs = ImmutableArray.CreateBuilder<(int, bool)>();
+            foreach (XElement slur in note.Elements("notations").Elements("slur"))
+            {
+                string? type = slur.Attribute("type")?.Value;
+                int number = int.TryParse(slur.Attribute("number")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 1;
+                if (type is "start" or "stop")
+                {
+                    slurs.Add((number, type == "start"));
+                }
+            }
+
+            return slurs.ToImmutable();
         }
 
         private static ImmutableArray<ArticulationKind> ReadMarks(XElement note)

@@ -58,7 +58,8 @@ internal static class ScoreMapper
         }
 
         return new ScoreDto(score.Metadata.Title, score.Metadata.Composer, instruments, measures, content,
-            attachments.Count == 0 ? null : attachments);
+            attachments.Count == 0 ? null : attachments,
+            score.SpannerList.IsEmpty ? null : [.. score.SpannerList.Select(s => new SpannerDto(s.Start.Value, s.End.Value, (int)s.Kind))]);
     }
 
     private static EventDto ToEventDto(MusicEvent musicEvent)
@@ -158,6 +159,9 @@ internal static class ScoreMapper
             _ => throw new InvalidDataException($"Unknown attachment kind '{a.Kind}'."),
         })];
         return new Score(new ScoreMetadata(dto.Title, dto.Composer), instruments.ToImmutable(),
-            measures.ToImmutable(), content.ToImmutable(), attachments.IsEmpty ? default : attachments);
+            measures.ToImmutable(), content.ToImmutable(), attachments.IsEmpty ? default : attachments,
+            dto.Spanners is { Count: > 0 } spanners
+                ? [.. spanners.Select(s => new Spanner(new EventId(s.Start), new EventId(s.End), (SpannerKind)s.Kind))]
+                : default);
     }
 }

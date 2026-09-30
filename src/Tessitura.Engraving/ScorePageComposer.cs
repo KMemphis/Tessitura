@@ -135,6 +135,7 @@ public sealed class ScorePageComposer
         VerticalLayoutResult verticalLayout = BuildVerticalLayout(layout.Systems,
             staffCount, pageHeight, topMargin);
         int pageNumber = verticalLayout.Systems[systemIndex].PageNumber;
+        SystemState state = new(BuildAttachmentIndex(score));
 
         for (int pageSystemIndex = 0; pageSystemIndex < layout.Systems.Length; pageSystemIndex++)
         {
@@ -151,6 +152,8 @@ public sealed class ScorePageComposer
             double musicStartX = leftMargin + pageHeader.MusicStartX;
             double systemWidth = Sum(measureWidths);
             double musicEndX = musicStartX + systemWidth;
+            state.Geometry.Clear();
+            int systemFirstPrimitive = primitives.Count;
             for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -178,7 +181,7 @@ public sealed class ScorePageComposer
                     {
                         AddStaffMeasure(primitives, placer, score, staffMeasure,
                             scoreMeasureIndex, staffClef, measureStartX, measureWidth, staffTop,
-                            cancellationToken);
+                            state, staffIndex, cancellationToken);
                     }
 
                     measureStartX += measureWidth;
@@ -186,6 +189,8 @@ public sealed class ScorePageComposer
                         _style.StaffLineThickness);
                 }
             }
+
+            AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -272,24 +277,13 @@ public sealed class ScorePageComposer
     private void AddStaffMeasure(ImmutableArray<DrawingPrimitive>.Builder primitives,
         StaffElementPlacer placer, Score score, StaffMeasure staffMeasure, int measureIndex,
         Clef clef, double measureStartX, double measureWidth, double staffTop,
-        CancellationToken cancellationToken)
+        SystemState articulations, int staffIndex, CancellationToken cancellationToken)
     {
+        articulations.CurrentStaff = staffIndex;
         AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
             out (int Voice, EventId Event, int Note)[] order);
         bool manyVoices = staffMeasure.Voices.Length > 1;
         double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
-        Dictionary<EventId, List<Attachment>> articulations = [];
-        foreach (Attachment attachment in score.AttachmentList)
-        {
-            if (!articulations.TryGetValue(attachment.Target, out List<Attachment>? list))
-            {
-                list = [];
-                articulations[attachment.Target] = list;
-            }
-
-            list.Add(attachment);
-        }
-
         double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
             score.Measures[measureIndex].TimeSignature.Length.Den;
         foreach (Voice voice in staffMeasure.Voices)
@@ -320,7 +314,7 @@ public sealed class ScorePageComposer
         Fraction position, Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth,
         double staffTop, double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks,
         bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift,
-        Dictionary<EventId, List<Attachment>> articulations)
+        SystemState articulations)
     {
         double x = measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
         AddAnnotations(primitives, leaf.Id, x, staffTop, articulations);
@@ -331,6 +325,7 @@ public sealed class ScorePageComposer
         }
 
         Chord chord = (Chord)leaf;
+        RecordGeometry(articulations, chord, x + headWidth / 2, staffTop, clef, voiceStem);
         if (chord.Notes.Length > 1)
         {
             (Pitch Pitch, AccidentalMark Accidental)[] notes = new (Pitch, AccidentalMark)[chord.Notes.Length];
@@ -381,11 +376,179 @@ public sealed class ScorePageComposer
         AddArticulations(primitives, placer, chord, x + headWidth / 2, staffTop, clef, voiceStem, articulations);
     }
 
+    private static void RecordGeometry(SystemState state, Chord chord, double centerX, double staffTop, Clef clef, StemDirection? voiceStem)
+    {
+        int lowest = int.MaxValue;
+        int highest = int.MinValue;
+        foreach (Note note in chord.Notes)
+        {
+            int position = StaffPitchPosition.Get(note.Pitch, clef);
+            lowest = Math.Min(lowest, position);
+            highest = Math.Max(highest, position);
+        }
+
+        bool stemUp = chord.Duration.Value != NoteValue.Whole && StaffElementPlacer.ChooseStem(lowest, highest, voiceStem) == StemDirection.Up;
+        state.Geometry[chord.Id] = new EventGeometry(centerX, staffTop + 4 - highest * 0.5 - 0.5, staffTop + 4 - lowest * 0.5 + 0.5,
+            stemUp, state.CurrentStaff, staffTop);
+    }
+
+    private static Dictionary<EventId, List<Attachment>> BuildAttachmentIndex(Score score)
+    {
+        Dictionary<EventId, List<Attachment>> index = [];
+        foreach (Attachment attachment in score.AttachmentList)
+        {
+            if (!index.TryGetValue(attachment.Target, out List<Attachment>? list))
+            {
+                list = [];
+                index[attachment.Target] = list;
+            }
+
+            list.Add(attachment);
+        }
+
+        return index;
+    }
+
+    // Behind Bars, Slurs: the curve goes on the notehead side, opposite the stems, and above when stems differ;
+    // it starts and ends beside the heads, rises with the span and clears every head, stem and mark under it.
+    private void AddSlurs(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, SystemState state,
+        int firstPrimitive, double musicStartX, double musicEndX)
+    {
+        foreach (Spanner spanner in score.SpannerList)
+        {
+            if (spanner.Kind != SpannerKind.Slur)
+            {
+                continue;
+            }
+
+            bool hasStart = state.Geometry.TryGetValue(spanner.Start, out EventGeometry start);
+            bool hasEnd = state.Geometry.TryGetValue(spanner.End, out EventGeometry end);
+            if (!hasStart && !hasEnd)
+            {
+                continue;
+            }
+
+            // A slur that continues into another system is drawn open at the system edge.
+            if (!hasStart)
+            {
+                start = end with { CenterX = musicStartX, StemUp = end.StemUp };
+            }
+
+            if (!hasEnd)
+            {
+                end = start with { CenterX = musicEndX - 0.5, StemUp = start.StemUp };
+            }
+
+            bool below = start.StemUp && end.StemUp;
+            double x0 = start.CenterX + (hasStart ? 0.2 : 0);
+            double x3 = end.CenterX - (hasEnd ? 0.2 : 0);
+            if (x3 - x0 < 1.0)
+            {
+                continue;
+            }
+
+            double y0 = below ? start.BottomY + 0.1 : start.TopY - 0.1;
+            double y3 = below ? end.BottomY + 0.1 : end.TopY - 0.1;
+            double sign = below ? 1 : -1;
+            double height = Math.Clamp(0.12 * (x3 - x0) + 0.6, 0.8, 4.0);
+            List<DisplayBox> obstacles = [];
+            for (int i = firstPrimitive; i < primitives.Count; i++)
+            {
+                DrawingPrimitive primitive = primitives[i];
+                if (primitive.ElementId.Value == Guid.Empty)
+                {
+                    continue;
+                }
+
+                bool horizontal = primitive is DisplayLine line && line.Start.Y == line.End.Y;
+                if (horizontal || primitive is DisplayLists.Path)
+                {
+                    continue;
+                }
+
+                DisplayBox box = primitive.Bounds;
+                if (box.X + box.Width > x0 + 0.6 && box.X < x3 - 0.6 &&
+                    Math.Abs(box.Y - (y0 + y3) / 2) < 14)
+                {
+                    obstacles.Add(box);
+                }
+            }
+
+            // Raise the arch until no sampled point of the curve touches an obstacle (0.3 space of air).
+            for (int attempt = 0; attempt < 60; attempt++)
+            {
+                if (!Touches(x0, y0, x3, y3, height, sign, obstacles))
+                {
+                    break;
+                }
+
+                height += 0.25;
+            }
+
+            primitives.Add(BuildSlur(new ElementId(spanner.Start.Value), x0, y0, x3, y3, height * sign));
+        }
+    }
+
+    private static double CurveY(double x0, double y0, double x3, double y3, double height, double sign, double t, out double x)
+    {
+        // Cubic Bézier with control points at a third and two thirds of the span, raised by 4/3 of the arch height.
+        double c1x = x0 + (x3 - x0) / 3;
+        double c2x = x0 + 2 * (x3 - x0) / 3;
+        double rise = 4.0 / 3.0 * height * sign;
+        double c1y = y0 + (y3 - y0) / 3 + rise;
+        double c2y = y0 + 2 * (y3 - y0) / 3 + rise;
+        double u = 1 - t;
+        x = u * u * u * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x3;
+        return u * u * u * y0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y3;
+    }
+
+    private static bool Touches(double x0, double y0, double x3, double y3, double height, double sign, List<DisplayBox> obstacles)
+    {
+        for (int step = 1; step < 32; step++)
+        {
+            double y = CurveY(x0, y0, x3, y3, height, sign, step / 32.0, out double x);
+            foreach (DisplayBox box in obstacles)
+            {
+                if (x >= box.X - 0.2 && x <= box.X + box.Width + 0.2 && y >= box.Y - 0.3 && y <= box.Y + box.Height + 0.3)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // A filled crescent: the outer edge rises the full arch height, the inner edge a little less, so the curve is
+    // thickest in the middle and tapers to points at both ends.
+    private static DisplayLists.Path BuildSlur(ElementId id, double x0, double y0, double x3, double y3, double signedHeight)
+    {
+        double sign = Math.Sign(signedHeight);
+        double height = Math.Abs(signedHeight);
+        double thickness = 0.22;
+        double outer = 4.0 / 3.0 * height;
+        double inner = 4.0 / 3.0 * Math.Max(0, height - thickness);
+        double c1x = x0 + (x3 - x0) / 3;
+        double c2x = x0 + 2 * (x3 - x0) / 3;
+        double c1y = y0 + (y3 - y0) / 3;
+        double c2y = y0 + 2 * (y3 - y0) / 3;
+        ImmutableArray<PathCommand> commands =
+        [
+            new(PathVerb.MoveTo, new DisplayPoint(x0, y0), default, default),
+            new(PathVerb.CubicTo, new DisplayPoint(c1x, c1y + sign * outer), new DisplayPoint(c2x, c2y + sign * outer), new DisplayPoint(x3, y3)),
+            new(PathVerb.CubicTo, new DisplayPoint(c2x, c2y + sign * inner), new DisplayPoint(c1x, c1y + sign * inner), new DisplayPoint(x0, y0)),
+            new(PathVerb.Close, default, default, default),
+        ];
+        double top = Math.Min(y0, y3) - (sign < 0 ? height : 0);
+        double bottom = Math.Max(y0, y3) + (sign > 0 ? height : 0);
+        return new DisplayLists.Path(id, new DisplayBox(x0, top, x3 - x0, bottom - top), commands, 0);
+    }
+
     // Dynamics sit below the staff, tempo marks and chord symbols above it, expression text below the dynamics.
     private void AddAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives, EventId eventId, double x,
-        double staffTop, Dictionary<EventId, List<Attachment>> attachments)
+        double staffTop, SystemState attachments)
     {
-        if (!attachments.TryGetValue(eventId, out List<Attachment>? list))
+        if (!attachments.Attachments.TryGetValue(eventId, out List<Attachment>? list))
         {
             return;
         }
@@ -451,9 +614,9 @@ public sealed class ScorePageComposer
 
     private static void AddArticulations(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer,
         Chord chord, double centerX, double staffTop, Clef clef, StemDirection? voiceStem,
-        Dictionary<EventId, List<Attachment>> articulations)
+        SystemState articulations)
     {
-        if (!articulations.TryGetValue(chord.Id, out List<Attachment>? attached))
+        if (!articulations.Attachments.TryGetValue(chord.Id, out List<Attachment>? attached))
         {
             return;
         }
@@ -484,7 +647,7 @@ public sealed class ScorePageComposer
         Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth, double staffTop,
         double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks, bool manyVoices,
         double headWidth, StemDirection? voiceStem, double restShift,
-        Dictionary<EventId, List<Attachment>> articulations)
+        SystemState articulations)
     {
         double left = double.MaxValue;
         double right = double.MinValue;
@@ -523,6 +686,17 @@ public sealed class ScorePageComposer
             AddGlyph(primitives, id, name, digitX, y + (below ? 0.5 : 0.5));
             digitX += _metadata.GetBoundingBox(name).NorthEast.X;
         }
+    }
+
+    private readonly record struct EventGeometry(double CenterX, double TopY, double BottomY, bool StemUp, int StaffIndex, double StaffTop);
+
+    private sealed class SystemState(Dictionary<EventId, List<Attachment>> attachments)
+    {
+        public Dictionary<EventId, List<Attachment>> Attachments { get; } = attachments;
+
+        public Dictionary<EventId, EventGeometry> Geometry { get; } = [];
+
+        public int CurrentStaff { get; set; }
     }
 
     private static DisplayLine BracketLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>

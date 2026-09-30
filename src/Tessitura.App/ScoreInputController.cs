@@ -153,6 +153,7 @@ public sealed class ScoreInputController
             (ArticulationKind.Trill, "trino", "Alt+R"), (ArticulationKind.Mordent, "mordente", "Alt+Shift+M"),
             (ArticulationKind.Turn, "grupeto", "Alt+G"),
         ];
+        actions.Add(new ActionDefinition("spanner.slur", "Ligadura de expresión sobre la selección", "S", () => SlurSelection()));
         foreach ((ArticulationKind kind, string name, string shortcut) in marks)
         {
             actions.Add(new ActionDefinition($"articulation.{kind.ToString().ToLowerInvariant()}", $"Alternar {name}", shortcut,
@@ -502,6 +503,38 @@ public sealed class ScoreInputController
         }
 
         return ApplySelectedEvent(_ => new AddAttachmentCommand(attachment));
+    }
+
+    /// <summary>Slurs from the first to the last selected event of the same staff.</summary>
+    /// <returns>Whether at least two events of one staff were selected.</returns>
+    public bool SlurSelection()
+    {
+        List<EventLocation> locations = [];
+        foreach (SelectionItem item in CurrentSelection.Items)
+        {
+            EventLocation location = FindEventLocation(item.EventId);
+            if (locations.Count == 0 || location.Position.StaffIndex == locations[0].Position.StaffIndex)
+            {
+                locations.Add(location);
+            }
+        }
+
+        if (locations.Count < 2)
+        {
+            return false;
+        }
+
+        locations.Sort((a, b) => a.Position.Position.CompareTo(b.Position.Position));
+        EventLocation first = locations[0];
+        EventLocation last = locations[^1];
+        if (first.Event.Id == last.Event.Id)
+        {
+            return false;
+        }
+
+        Apply(new AddSpannerCommand(new Spanner(first.Event.Id, last.Event.Id, SpannerKind.Slur)), first.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
     }
 
     /// <summary>Adds an articulation to the selected event, or removes it if already present.</summary>

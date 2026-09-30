@@ -71,8 +71,9 @@ public sealed class DisplayListRenderer : IDisposable
                     break;
 
                 case DisplayPath path:
+                    // A stroke width of zero means a filled shape such as a slur.
                     stroke.StrokeWidth = (float)(path.StrokeWidth * staffSpace);
-                    stroke.Style = SKPaintStyle.Stroke;
+                    stroke.Style = path.StrokeWidth == 0 ? SKPaintStyle.Fill : SKPaintStyle.Stroke;
                     using (SKPath skPath = BuildPath(path, staffSpace))
                     {
                         canvas.DrawPath(skPath, stroke);
