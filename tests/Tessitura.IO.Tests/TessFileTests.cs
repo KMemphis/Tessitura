@@ -46,6 +46,52 @@ public sealed class TessFileTests
     }
 
     [Fact]
+    public void InstrumentTranspositionSurvivesATessRoundTripWithoutChangingTheFormatVersion()
+    {
+        using TempDirectory directory = new();
+        string path = Path.Combine(directory.Path, "transposing.tess");
+        Score score = CreateScore() with
+        {
+            Instruments = [new Instrument("Clarinet in B-flat", [new Staff("Clarinet")], new Interval(-1, -2))],
+        };
+
+        TessFile.Save(path, score, CreateStyle());
+        TessDocument opened = TessFile.Open(path);
+
+        Assert.Equal(new Interval(-1, -2), Assert.Single(opened.Score.Instruments).Transposition);
+        Assert.Equal(TessMigrator.CurrentVersion, opened.Manifest.FormatVersion);
+    }
+
+    [Fact]
+    public void ScoreJsonWithoutInstrumentTranspositionFieldsOpensAsUnison()
+    {
+        using TempDirectory directory = new();
+        string path = Path.Combine(directory.Path, "older-instruments.tess");
+        TessFile.Save(path, CreateScore(), CreateStyle());
+
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            ZipArchiveEntry entry = archive.GetEntry("score.json")!;
+            JsonObject node;
+            using (Stream stream = entry.Open())
+            {
+                node = JsonNode.Parse(stream)!.AsObject();
+            }
+
+            JsonObject instrument = node["Instruments"]!.AsArray()[0]!.AsObject();
+            instrument.Remove("TranspositionDiatonicSteps");
+            instrument.Remove("TranspositionSemitones");
+            entry.Delete();
+            ZipArchiveEntry replacement = archive.CreateEntry("score.json", CompressionLevel.Optimal);
+            using Stream output = replacement.Open();
+            System.Text.Json.JsonSerializer.Serialize(output, node,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        Assert.Equal(default, Assert.Single(TessFile.Open(path).Score.Instruments).Transposition);
+    }
+
+    [Fact]
     public void ScoreJsonWithoutPartViewsStillOpensAtTheCurrentFormatVersion()
     {
         using TempDirectory directory = new();
@@ -173,6 +219,7 @@ public sealed class TessFileTests
         {
             Assert.Equal(expected.Instruments[i].Name, actual.Instruments[i].Name);
             Assert.Equal(expected.Instruments[i].Staves.AsEnumerable(), actual.Instruments[i].Staves.AsEnumerable());
+            Assert.Equal(expected.Instruments[i].Transposition, actual.Instruments[i].Transposition);
         }
 
         Assert.Equal(expected.Measures.AsEnumerable(), actual.Measures.AsEnumerable());

@@ -16,7 +16,8 @@ internal static class ScoreMapper
                 staves.Add(new StaffDto(staff.Name, (int)staff.InitialClef));
             }
 
-            instruments.Add(new InstrumentDto(instrument.Name, staves));
+            instruments.Add(new InstrumentDto(instrument.Name, staves,
+                instrument.Transposition.DiatonicSteps, instrument.Transposition.Semitones));
         }
 
         List<MeasureDto> measures = [];
@@ -132,7 +133,8 @@ internal static class ScoreMapper
                 staves.Add(new Staff(staff.Name, (Clef)staff.Clef));
             }
 
-            instruments.Add(new Instrument(instrument.Name, staves.ToImmutable()));
+            instruments.Add(new Instrument(instrument.Name, staves.ToImmutable(),
+                new Interval(instrument.TranspositionDiatonicSteps, instrument.TranspositionSemitones)));
         }
 
         ImmutableArray<Measure>.Builder measures = ImmutableArray.CreateBuilder<Measure>();

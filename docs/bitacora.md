@@ -490,3 +490,11 @@
 - `.tess` persiste `Parts` como campo opcional sin cambiar la versión; una prueba elimina ese campo y confirma que el archivo aún abre. No se alteró el catálogo de imágenes de referencia: la geometría del grupo se comprueba con pruebas.
 - Se añadieron seis pruebas entre Core, IO y Engraving, incluida la edición enlazada y los compases de silencio agrupados. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 373 pruebas (86 Core, 48 Playback, 45 IO y 194 Engraving), 0 fallos y 0 omitidas.
 - Siguiente tarea: F4.12, transposición.
+
+## 2026-09-30 · F4.12 Transposición
+
+- `Instrument.Transposition` guarda un `Interval` de altura escrita a sonora. `Measure.KeySignature` se conserva en tonalidad de concierto; `ScorePitchView` deriva la armadura escrita de cada pentagrama, crea la proyección de concierto sin alterar la partitura maestra y `ScorePartProjector` conserva las alturas escritas o las transpone para la vista. `ScorePageComposer` graba las vistas escrita y de concierto, y la entrada por teclado resuelve alteraciones con la armadura escrita.
+- `Interpreter` aplica la transposición diatónica/cromática antes de emitir el MIDI. MusicXML importa `<transpose>` (incluido `octave-change`), normaliza armaduras de parte a una armadura de concierto y exporta la armadura escrita y el intervalo de cada instrumento. `.tess` guarda dos campos opcionales en cada instrumento sin subir la versión; archivos sin ellos siguen abriendo en unísono.
+- Pruebas: clarinete en Si♭ de Re4 escrito a Do4 de concierto y Do5 a Si♭4 audible; armadura de Re mayor escrita frente a Do mayor de concierto; composición geométrica de ambas vistas; corpus MusicXML 72a y validación de esquema; ida y vuelta `.tess` y compatibilidad del formato anterior.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 381 pruebas (88 Core, 49 Playback, 49 IO y 195 Engraving), 0 fallos y 0 omitidas.
+- Deuda: MusicXML permite cambiar la transposición durante la obra; por ahora se conserva el primer intervalo y se informa de los cambios posteriores. El selector de vistas se conectará en F4.13. Siguiente tarea: F4.13, vistas continua y de parte.

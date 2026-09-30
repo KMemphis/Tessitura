@@ -19,7 +19,8 @@ internal sealed record StaffMeasureDto(int Staff, int Measure, List<VoiceDto> Vo
 
 internal sealed record StaffDto(string Name, int Clef);
 
-internal sealed record InstrumentDto(string Name, List<StaffDto> Staves);
+internal sealed record InstrumentDto(string Name, List<StaffDto> Staves,
+    int TranspositionDiatonicSteps = 0, int TranspositionSemitones = 0);
 
 internal sealed record ScorePartDto(string Name, List<int> InstrumentIndices);
 

@@ -73,8 +73,9 @@ public sealed class ScorePageComposer
 
     /// <summary>Gets the music width available to the system breaker for the score.</summary>
     /// <param name="score">The immutable score snapshot.</param>
+    /// <param name="pitchDisplayMode">Whether headers should use written or concert key signatures.</param>
     /// <returns>The system's usable width in staff spaces after its header.</returns>
-    public double GetAvailableWidth(Score score)
+    public double GetAvailableWidth(Score score, PitchDisplayMode pitchDisplayMode = PitchDisplayMode.Written)
     {
         ArgumentNullException.ThrowIfNull(score);
         if (score.Measures.IsDefaultOrEmpty)
@@ -85,13 +86,14 @@ public sealed class ScorePageComposer
         double staffSpace = GetStaffSpacePoints(score);
         double headerWidth = 0;
         int headerStaffCount = CountStaves(score);
-        foreach (Measure measure in score.Measures)
+        for (int measureIndex = 0; measureIndex < score.Measures.Length; measureIndex++)
         {
             for (int staffIndex = 0; staffIndex < headerStaffCount; staffIndex++)
             {
                 double currentWidth = _horizontalSpacer.BuildHeader(_metadata,
                     ClefGlyphName(GetStaffClef(score, staffIndex)),
-                    measure.KeySignature, measure.TimeSignature, _style).MusicStartX;
+                    ScorePitchView.GetKeySignature(score, staffIndex, measureIndex, pitchDisplayMode),
+                    score.Measures[measureIndex].TimeSignature, _style).MusicStartX;
                 headerWidth = Math.Max(headerWidth, currentWidth);
             }
         }
@@ -113,39 +115,47 @@ public sealed class ScorePageComposer
     /// <param name="measureIndex">The measure whose system should be composed.</param>
     /// <param name="cursor">The optional musical cursor to place on the page.</param>
     /// <param name="cancellationToken">Cancels composition without returning partial primitives.</param>
+    /// <param name="pitchDisplayMode">Whether to display the score in written or concert pitch.</param>
     /// <returns>The display page and its score-system location.</returns>
     public ScorePageComposition Compose(Score score, ScoreLayoutResult layout, int measureIndex,
-        EngravingCursor? cursor = null, CancellationToken cancellationToken = default) =>
-        ComposeCore(score, layout, measureIndex, cursor, cancellationToken,
-            ImmutableArray<MultiMeasureRestGroup>.Empty);
+        EngravingCursor? cursor = null, CancellationToken cancellationToken = default,
+        PitchDisplayMode pitchDisplayMode = PitchDisplayMode.Written)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        Score displayScore = ScorePitchView.Project(score, pitchDisplayMode);
+        return ComposeCore(displayScore, layout, measureIndex, cursor, cancellationToken,
+            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
+    }
 
     /// <summary>Composes a linked instrument part and groups its consecutive full-measure rests.</summary>
     /// <param name="sourceScore">The latest master score snapshot.</param>
     /// <param name="part">The linked part view to compose.</param>
     /// <param name="layout">A layout calculated for the projected part score.</param>
     /// <param name="measureIndex">The part measure whose system should be composed.</param>
+    /// <param name="pitchDisplayMode">Whether the part is written or shown at concert pitch.</param>
     /// <param name="cursor">The optional musical cursor to place on the page.</param>
     /// <param name="cancellationToken">Cancels composition without returning partial primitives.</param>
     /// <returns>The part's display page and system location.</returns>
     public ScorePageComposition ComposePart(Score sourceScore, ScorePartView part,
-        ScoreLayoutResult layout, int measureIndex, EngravingCursor? cursor = null,
+        ScoreLayoutResult layout, int measureIndex,
+        PitchDisplayMode pitchDisplayMode = PitchDisplayMode.Written, EngravingCursor? cursor = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourceScore);
         ArgumentNullException.ThrowIfNull(part);
-        Score partScore = ScorePartProjector.Project(sourceScore, part);
+        Score partScore = ScorePartProjector.Project(sourceScore, part, pitchDisplayMode);
         if (partScore.Instruments.Length != 1)
         {
             throw new ArgumentException("A part layout must contain exactly one instrument.", nameof(part));
         }
 
         return ComposeCore(partScore, layout, measureIndex, cursor, cancellationToken,
-            MultiMeasureRestGrouper.FindGroups(partScore));
+            MultiMeasureRestGrouper.FindGroups(partScore), pitchDisplayMode);
     }
 
     private ScorePageComposition ComposeCore(Score score, ScoreLayoutResult layout, int measureIndex,
         EngravingCursor? cursor, CancellationToken cancellationToken,
-        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups)
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(layout);
@@ -166,7 +176,7 @@ public sealed class ScorePageComposer
         ImmutableArray<LyricAnchor> lyricAnchors = BuildLyricAnchors(score, attachmentIndex);
         TimeSignature firstMeter = score.Measures[system.Range.StartIndex].TimeSignature;
         int staffCount = CountStaves(score);
-        SystemHeaderLayout header = BuildSystemHeader(score, system.Range.StartIndex, staffCount);
+        SystemHeaderLayout header = BuildSystemHeader(score, system.Range.StartIndex, staffCount, pitchDisplayMode);
         ImmutableArray<DrawingPrimitive>.Builder primitives = ImmutableArray.CreateBuilder<DrawingPrimitive>();
         StaffElementPlacer placer = new(_metadata, _style);
         EventId staffLineId = new(Guid.Empty);
@@ -180,7 +190,7 @@ public sealed class ScorePageComposer
             {
                 verticalLayout = BuildVerticalLayout(layout.Systems, staffCount, pageHeight, topMargin,
                     MeasureExtents(score, layout, verticalLayout, staffCount, placer, leftMargin,
-                        attachmentIndex, lyricAnchors, cancellationToken));
+                        attachmentIndex, lyricAnchors, cancellationToken, pitchDisplayMode));
             }
             catch (InvalidOperationException)
             {
@@ -201,7 +211,7 @@ public sealed class ScorePageComposer
             }
 
             DrawSystem(primitives, score, layout, pageSystemIndex, placement, staffCount, placer, state,
-                leftMargin, cancellationToken, multiMeasureRestGroups);
+                leftMargin, cancellationToken, multiMeasureRestGroups, pitchDisplayMode);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -218,7 +228,7 @@ public sealed class ScorePageComposer
     private void DrawSystem(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, ScoreLayoutResult layout,
         int pageSystemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer, SystemState state,
         double leftMargin, CancellationToken cancellationToken,
-        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups)
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode)
     {
         EventId staffLineId = new(Guid.Empty);
         SystemLine pageSystem = layout.Systems[pageSystemIndex];
@@ -236,7 +246,8 @@ public sealed class ScorePageComposer
             }
         }
 
-        SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount);
+        SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount,
+            pitchDisplayMode);
         double musicStartX = leftMargin + pageHeader.MusicStartX;
         double systemWidth = Sum(measureWidths);
         double musicEndX = musicStartX + systemWidth;
@@ -254,10 +265,11 @@ public sealed class ScorePageComposer
                 musicEndX, staffTop));
             Clef staffClef = GetStaffClef(score, staffIndex);
             SystemHeaderLayout staffHeader = _horizontalSpacer.BuildHeader(_metadata,
-                ClefGlyphName(staffClef), score.Measures[pageSystem.Range.StartIndex].KeySignature,
+                ClefGlyphName(staffClef), ScorePitchView.GetKeySignature(score, staffIndex,
+                    pageSystem.Range.StartIndex, pitchDisplayMode),
                 score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
             AddHeader(primitives, staffHeader, leftMargin, staffTop, staffClef,
-                score.Measures[pageSystem.Range.StartIndex].KeySignature);
+                ScorePitchView.GetKeySignature(score, staffIndex, pageSystem.Range.StartIndex, pitchDisplayMode));
             AddMeasureBoundary(primitives, score, staffLineId,
                 pageSystem.Range.StartIndex, musicStartX - _style.MinimumRhythmicGap,
                 staffTop, _style.StaffLineThickness);
@@ -283,7 +295,8 @@ public sealed class ScorePageComposer
                 {
                     AddStaffMeasure(primitives, placer, score, staffMeasure,
                         scoreMeasureIndex, staffClef, measureStartX, measureWidth, staffTop,
-                        state, staffIndex, cancellationToken);
+                        state, staffIndex, cancellationToken,
+                        ScorePitchView.GetKeySignature(score, staffIndex, scoreMeasureIndex, pitchDisplayMode));
                 }
 
                 measureStartX += measureWidth;
@@ -563,7 +576,8 @@ public sealed class ScorePageComposer
             new DisplayPoint(endX, endY), thickness));
     }
 
-    private SystemHeaderLayout BuildSystemHeader(Score score, int measureIndex, int staffCount)
+    private SystemHeaderLayout BuildSystemHeader(Score score, int measureIndex, int staffCount,
+        PitchDisplayMode pitchDisplayMode)
     {
         // All staves in a system share one music start, so use the widest header.
         SystemHeaderLayout widest = default!;
@@ -571,7 +585,7 @@ public sealed class ScorePageComposer
         {
             SystemHeaderLayout current = _horizontalSpacer.BuildHeader(_metadata,
                 ClefGlyphName(GetStaffClef(score, staffIndex)),
-                score.Measures[measureIndex].KeySignature,
+                ScorePitchView.GetKeySignature(score, staffIndex, measureIndex, pitchDisplayMode),
                 score.Measures[measureIndex].TimeSignature, _style);
             if (widest is null || current.MusicStartX > widest.MusicStartX)
             {
@@ -637,11 +651,13 @@ public sealed class ScorePageComposer
     private void AddStaffMeasure(ImmutableArray<DrawingPrimitive>.Builder primitives,
         StaffElementPlacer placer, Score score, StaffMeasure staffMeasure, int measureIndex,
         Clef clef, double measureStartX, double measureWidth, double staffTop,
-        SystemState articulations, int staffIndex, CancellationToken cancellationToken)
+        SystemState articulations, int staffIndex, CancellationToken cancellationToken,
+        KeySignature keySignature)
     {
         articulations.CurrentStaff = staffIndex;
         articulations.CurrentMeasureIndex = measureIndex;
-        AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
+        AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], keySignature,
+            measureIndex, staffMeasure,
             out (int Voice, EventId Event, int Note)[] order);
         PackColumns(articulations, staffMeasure, score.Measures[measureIndex].TimeSignature.Length, measureStartX, measureWidth,
             order, marks);
@@ -1499,7 +1515,8 @@ public sealed class ScorePageComposer
         _ => 2,
     };
 
-    private static AccidentalMark[] ResolveAccidentals(Measure measure, int measureIndex,
+    private static AccidentalMark[] ResolveAccidentals(Measure measure, KeySignature keySignature,
+        int measureIndex,
         StaffMeasure staffMeasure, out (int Voice, EventId Event, int Note)[] order)
     {
         // Accidentals follow the sounding order of the measure across voices
@@ -1550,7 +1567,7 @@ public sealed class ScorePageComposer
                 }
 
                 order[slot] = (voice, chord.Id, noteIndex);
-                inputs[slot] = new AccidentalInput(measureIndex, pitch, tiedFromPrevious, measure.KeySignature);
+                inputs[slot] = new AccidentalInput(measureIndex, pitch, tiedFromPrevious, keySignature);
                 slot++;
             }
         }
@@ -1734,7 +1751,7 @@ public sealed class ScorePageComposer
     private StaffSkyline[][] MeasureExtents(Score score, ScoreLayoutResult layout, VerticalLayoutResult provisional,
         int staffCount, StaffElementPlacer placer, double leftMargin,
         Dictionary<EventId, List<Attachment>> attachments, ImmutableArray<LyricAnchor> lyricAnchors,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, PitchDisplayMode pitchDisplayMode)
     {
         StaffSkyline[][] extents = new StaffSkyline[layout.Systems.Length][];
         for (int systemIndex = 0; systemIndex < layout.Systems.Length; systemIndex++)
@@ -1744,7 +1761,7 @@ public sealed class ScorePageComposer
             ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
             SystemState scratch = new(attachments, lyricAnchors);
             DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch,
-                leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty);
+                leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
             double[] top = new double[staffCount];
             double[] bottom = new double[staffCount];
             Array.Fill(top, 0.5);

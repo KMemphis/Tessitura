@@ -214,7 +214,8 @@ public static class MusicXmlExporter
 
         if (includeKey)
         {
-            attributes.Add(new XElement("key", new XElement("fifths", measure.KeySignature.Fifths)));
+            KeySignature writtenKey = measure.KeySignature.Transpose(instrument.Transposition.Inverse());
+            attributes.Add(new XElement("key", new XElement("fifths", writtenKey.Fifths)));
         }
 
         if (includeTime)
@@ -247,6 +248,13 @@ public static class MusicXmlExporter
                 }
 
                 attributes.Add(clef);
+            }
+
+            if (instrument.Transposition != default)
+            {
+                attributes.Add(new XElement("transpose",
+                    new XElement("diatonic", instrument.Transposition.DiatonicSteps),
+                    new XElement("chromatic", instrument.Transposition.Semitones)));
             }
         }
 

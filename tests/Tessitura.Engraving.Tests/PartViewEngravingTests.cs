@@ -56,6 +56,55 @@ public sealed class PartViewEngravingTests
         Assert.Empty(MultiMeasureRestGrouper.FindGroups(score));
     }
 
+    [Fact]
+    public void BbClarinetComposesWrittenAndConcertPitchPartViewsWithTheirOwnKeySignatures()
+    {
+        EventId noteId = new(Guid.NewGuid());
+        Score score = new(new ScoreMetadata("Clarinet", ""),
+            [new Instrument("Clarinet in B-flat", [new Staff("Clarinet")], new Interval(-1, -2))],
+            [new Measure(1, new TimeSignature(4, 4), new KeySignature(0))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1,
+                [
+                    new Chord(noteId, Fraction.Zero, new Duration(NoteValue.Quarter, 0),
+                        [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto),
+                    new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1)),
+                ])])));
+        ScorePartView part = new("Clarinet in B-flat", [0]);
+        SmuflMetadata metadata = LoadMetadata();
+        Style style = Style.CreateDefault(metadata);
+        ScorePageComposer composer = new(metadata, style);
+        Score writtenScore = ScorePartProjector.Project(score, part, PitchDisplayMode.Written);
+        Score concertScore = ScorePartProjector.Project(score, part, PitchDisplayMode.Concert);
+        ScoreLayoutResult writtenLayout = new IncrementalScoreLayouter(metadata).Layout(
+            writtenScore, style, composer.GetAvailableWidth(writtenScore));
+        ScoreLayoutResult concertLayout = new IncrementalScoreLayouter(metadata).Layout(
+            concertScore, style, composer.GetAvailableWidth(concertScore));
+
+        ScorePageComposition written = composer.ComposePart(score, part, writtenLayout, measureIndex: 0,
+            pitchDisplayMode: PitchDisplayMode.Written);
+        ScorePageComposition concert = composer.ComposePart(score, part, concertLayout, measureIndex: 0,
+            pitchDisplayMode: PitchDisplayMode.Concert);
+        Score fullConcertScore = ScorePitchView.Project(score, PitchDisplayMode.Concert);
+        ScoreLayoutResult fullConcertLayout = new IncrementalScoreLayouter(metadata).Layout(
+            fullConcertScore, style, composer.GetAvailableWidth(fullConcertScore));
+        ScorePageComposition fullConcert = composer.Compose(score, fullConcertLayout,
+            measureIndex: 0, pitchDisplayMode: PitchDisplayMode.Concert);
+        DisplayGlyph writtenHead = Assert.Single(written.Page.Primitives.OfType<DisplayGlyph>(),
+            glyph => glyph.ElementId.Value == noteId.Value && glyph.Codepoint == metadata.GetGlyphCodepoint("noteheadBlack"));
+        DisplayGlyph concertHead = Assert.Single(concert.Page.Primitives.OfType<DisplayGlyph>(),
+            glyph => glyph.ElementId.Value == noteId.Value && glyph.Codepoint == metadata.GetGlyphCodepoint("noteheadBlack"));
+        DisplayGlyph fullConcertHead = Assert.Single(fullConcert.Page.Primitives.OfType<DisplayGlyph>(),
+            glyph => glyph.ElementId.Value == noteId.Value && glyph.Codepoint == metadata.GetGlyphCodepoint("noteheadBlack"));
+
+        Assert.Equal(2, written.Page.Primitives.OfType<DisplayGlyph>().Count(glyph =>
+            glyph.ElementId.Value == Guid.Empty && glyph.Codepoint == metadata.GetGlyphCodepoint("accidentalSharp")));
+        Assert.DoesNotContain(concert.Page.Primitives.OfType<DisplayGlyph>(), glyph =>
+            glyph.ElementId.Value == Guid.Empty && glyph.Codepoint == metadata.GetGlyphCodepoint("accidentalSharp"));
+        Assert.Equal(-0.5, writtenHead.Origin.Y - concertHead.Origin.Y, precision: 6);
+        Assert.Equal(concertHead.Origin.Y, fullConcertHead.Origin.Y);
+    }
+
     private static Score CreateRestScore(int measureCount)
     {
         ImmutableArray<Measure>.Builder measures = ImmutableArray.CreateBuilder<Measure>(measureCount);

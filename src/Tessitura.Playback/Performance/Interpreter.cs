@@ -196,7 +196,7 @@ public static class Interpreter
                         Dynamic level = LevelAt(start, settings, levels, levelPositions);
                         foreach (Note written in chord.Notes)
                         {
-                            int midi = written.Pitch.MidiNumber;
+                            int midi = written.Pitch.Transpose(score.Instruments[instrument].Transposition).MidiNumber;
                             foreach ((int octaveStaff, Fraction octaveStart, Fraction octaveEnd, int shift) in octaves)
                             {
                                 if (octaveStaff == staff && start >= octaveStart && start < octaveEnd)

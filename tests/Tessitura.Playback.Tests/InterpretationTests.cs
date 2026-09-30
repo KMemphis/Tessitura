@@ -48,6 +48,20 @@ public sealed class InterpretationTests
     }
 
     [Fact]
+    public void BbClarinetSoundsAWrittenCAsConcertBb()
+    {
+        Chord note = Quarter(Fraction.Zero, Step.C, 5);
+        Score score = SingleStaff([note]) with
+        {
+            Instruments = [new Instrument("Clarinet in B-flat", [new Staff("Clarinet")], new Interval(-1, -2))],
+        };
+
+        PerformedNote performed = Assert.Single(Interpreter.Interpret(score).Notes);
+
+        Assert.Equal(70, performed.Midi);
+    }
+
+    [Fact]
     public void DynamicsMapToVelocityFromTheAnchoredEventOnwardAcrossTheInstrument()
     {
         Chord[] notes = [Quarter(Fraction.Zero, Step.C, 4), Quarter(new Fraction(1, 4), Step.D, 4),

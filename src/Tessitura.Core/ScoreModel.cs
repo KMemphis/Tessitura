@@ -14,7 +14,8 @@ public sealed record ScoreMetadata(string Title, string Composer);
 /// <summary>Describes one instrument and its staves.</summary>
 /// <param name="Name">The instrument name.</param>
 /// <param name="Staves">The instrument's staves.</param>
-public sealed record Instrument(string Name, ImmutableArray<Staff> Staves);
+/// <param name="Transposition">The interval from written pitch to concert pitch.</param>
+public sealed record Instrument(string Name, ImmutableArray<Staff> Staves, Interval Transposition = default);
 
 /// <summary>Defines a linked part as an ordered view of one or more source-score instruments.</summary>
 /// <param name="Name">The displayed name of the part.</param>
@@ -73,6 +74,15 @@ public enum Clef
     Alto,
     /// <summary>C clef on the fourth line from the bottom.</summary>
     Tenor,
+}
+
+/// <summary>Names how written instrument pitches are presented in a score view.</summary>
+public enum PitchDisplayMode
+{
+    /// <summary>Show the instrument's written pitches and transposed key signature.</summary>
+    Written,
+    /// <summary>Show the sounding concert pitches and concert key signature.</summary>
+    Concert,
 }
 
 /// <summary>Represents a conventional time signature.</summary>
@@ -155,6 +165,45 @@ public readonly record struct KeySignature
 
         return 0;
     }
+
+    /// <summary>Transposes this major key signature by a written-to-sounding pitch interval.</summary>
+    /// <param name="interval">The signed diatonic and chromatic interval to apply.</param>
+    /// <returns>The conventional key signature for the transposed major tonic.</returns>
+    /// <exception cref="NotSupportedException">The result needs a nonstandard key outside seven sharps or flats.</exception>
+    public KeySignature Transpose(Interval interval)
+    {
+        Pitch tonic = MajorTonic(Fifths).Transpose(interval);
+        for (int fifths = -7; fifths <= 7; fifths++)
+        {
+            Pitch candidate = MajorTonic(fifths);
+            if (candidate.Step == tonic.Step && candidate.Alter == tonic.Alter)
+            {
+                return new KeySignature(fifths);
+            }
+        }
+
+        throw new NotSupportedException("The transposed key signature is outside the conventional seven sharps or flats.");
+    }
+
+    private static Pitch MajorTonic(int fifths) => fifths switch
+    {
+        -7 => new Pitch(Step.C, -1, 4),
+        -6 => new Pitch(Step.G, -1, 4),
+        -5 => new Pitch(Step.D, -1, 4),
+        -4 => new Pitch(Step.A, -1, 4),
+        -3 => new Pitch(Step.E, -1, 4),
+        -2 => new Pitch(Step.B, -1, 4),
+        -1 => new Pitch(Step.F, 0, 4),
+        0 => new Pitch(Step.C, 0, 4),
+        1 => new Pitch(Step.G, 0, 4),
+        2 => new Pitch(Step.D, 0, 4),
+        3 => new Pitch(Step.A, 0, 4),
+        4 => new Pitch(Step.E, 0, 4),
+        5 => new Pitch(Step.B, 0, 4),
+        6 => new Pitch(Step.F, 1, 4),
+        7 => new Pitch(Step.C, 1, 4),
+        _ => throw new ArgumentOutOfRangeException(nameof(fifths)),
+    };
 }
 
 /// <summary>Names a navigation landmark in the score for repeat playback.</summary>

@@ -502,7 +502,8 @@ public sealed class ScoreInputController
         }
 
         (int measureIndex, Fraction localPosition) = EnsureCursorMeasure();
-        bool sharps = CurrentScore.Measures[measureIndex].KeySignature.Fifths >= 0;
+        bool sharps = ScorePitchView.GetKeySignature(CurrentScore, Cursor.StaffIndex,
+            measureIndex, PitchDisplayMode.Written).Fifths >= 0;
         EditContext context = new(Cursor.StaffIndex, measureIndex, Cursor.VoiceNumber);
         MusicEvent target = FindEventAt(context, localPosition);
         bool first = true;
@@ -764,7 +765,9 @@ public sealed class ScoreInputController
 
     private int ResolveInputAlteration(int measureIndex, Fraction localPosition, Pitch pitch)
     {
-        int alteration = CurrentScore.Measures[measureIndex].KeySignature.GetAlter(pitch.Step);
+        KeySignature writtenKey = ScorePitchView.GetKeySignature(CurrentScore,
+            Cursor.StaffIndex, measureIndex, PitchDisplayMode.Written);
+        int alteration = writtenKey.GetAlter(pitch.Step);
         if (!CurrentScore.Content.TryGetValue(new StaffMeasureKey(Cursor.StaffIndex, measureIndex),
             out StaffMeasure? staffMeasure))
         {

@@ -21,6 +21,35 @@ public sealed class MusicXmlExporterTests
     }
 
     [Fact]
+    public void TransposingPartExportsWrittenKeyAndRoundTripsItsConcertKeyAndInterval()
+    {
+        EventId noteId = new(Guid.NewGuid());
+        Score score = new(new ScoreMetadata("Clarinet", ""),
+            [new Instrument("Clarinet in B-flat", [new Staff("Clarinet")], new Interval(-1, -2))],
+            [new Measure(1, new TimeSignature(4, 4), new KeySignature(0))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1,
+                [
+                    new Chord(noteId, Fraction.Zero, new Duration(NoteValue.Quarter, 0),
+                        [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto),
+                    new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1)),
+                ])])));
+
+        XDocument document = MusicXmlExporter.ToDocument(score);
+        XElement transpose = Assert.Single(document.Descendants("transpose"));
+        Score roundTrip = MusicXmlImporter.Import(document).Score;
+
+        Assert.Empty(MusicXmlSchema.Validate(document));
+        Assert.Equal("-1", transpose.Element("diatonic")!.Value);
+        Assert.Equal("-2", transpose.Element("chromatic")!.Value);
+        Assert.Equal("2", Assert.Single(document.Descendants("key")).Element("fifths")!.Value);
+        Assert.Equal(new Interval(-1, -2), Assert.Single(roundTrip.Instruments).Transposition);
+        Assert.Equal(new KeySignature(0), roundTrip.Measures[0].KeySignature);
+        Assert.Equal(new Pitch(Step.D, 0, 4), Assert.IsType<Chord>(
+            roundTrip.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]).Notes[0].Pitch);
+    }
+
+    [Fact]
     public void ExportWritesChordsTiesStavesVoicesAndExactDurations()
     {
         Score score = CreatePianoScore();

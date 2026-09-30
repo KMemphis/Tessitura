@@ -8,18 +8,25 @@ public static class ScorePartProjector
     /// <summary>Projects the current source-score snapshot onto the instruments selected by a part.</summary>
     /// <param name="score">The latest source score snapshot.</param>
     /// <param name="part">The linked part to project.</param>
+    /// <param name="pitchMode">Whether the view should keep written pitches or show concert pitch.</param>
     /// <returns>A score with selected instruments and content reindexed from zero.</returns>
     /// <remarks>
     /// The projection retains event identifiers and the selected source snapshot's measures. Re-projecting after
     /// each score command therefore exposes edits without copying or synchronizing a second music model.
     /// </remarks>
-    public static Score Project(Score score, ScorePartView part)
+    public static Score Project(Score score, ScorePartView part,
+        PitchDisplayMode pitchMode = PitchDisplayMode.Written)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(part);
+        if (!Enum.IsDefined(pitchMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(pitchMode));
+        }
 
         int sourceStaffCount = CountStaves(score);
         int[] targetStaffBySource = new int[sourceStaffCount];
+        Interval[] transpositionBySourceStaff = new Interval[sourceStaffCount];
         Array.Fill(targetStaffBySource, -1);
         ImmutableArray<Instrument>.Builder instruments = ImmutableArray.CreateBuilder<Instrument>();
         int targetStaffCount = 0;
@@ -32,11 +39,15 @@ public static class ScorePartProjector
             }
 
             Instrument instrument = score.Instruments[instrumentIndex];
-            instruments.Add(instrument);
+            instruments.Add(pitchMode == PitchDisplayMode.Concert
+                ? instrument with { Transposition = default }
+                : instrument);
             int sourceStaffIndex = GetFirstStaffIndex(score.Instruments, instrumentIndex);
             for (int localStaff = 0; localStaff < instrument.Staves.Length; localStaff++)
             {
-                targetStaffBySource[sourceStaffIndex + localStaff] = targetStaffCount++;
+                int sourceStaff = sourceStaffIndex + localStaff;
+                targetStaffBySource[sourceStaff] = targetStaffCount++;
+                transpositionBySourceStaff[sourceStaff] = instrument.Transposition;
             }
         }
 
@@ -56,7 +67,10 @@ public static class ScorePartProjector
                 continue;
             }
 
-            content.Add(new StaffMeasureKey(targetStaffIndex, key.MeasureIndex), staffMeasure);
+            StaffMeasure projectedMeasure = pitchMode == PitchDisplayMode.Concert
+                ? TransposeStaffMeasure(staffMeasure, transpositionBySourceStaff[key.StaffIndex])
+                : staffMeasure;
+            content.Add(new StaffMeasureKey(targetStaffIndex, key.MeasureIndex), projectedMeasure);
             foreach (Voice voice in staffMeasure.Voices)
             {
                 foreach (MusicEvent musicEvent in voice.Events)
@@ -72,8 +86,52 @@ public static class ScorePartProjector
         ImmutableArray<Spanner> spanners = score.SpannerList.IsEmpty
             ? default
             : [.. FilterSpanners(score.SpannerList, includedEvents)];
-        return new Score(score.Metadata, instruments.ToImmutable(), score.Measures, content.ToImmutable(),
-            attachments, spanners);
+        return new Score(score.Metadata, instruments.ToImmutable(), score.Measures,
+            content.ToImmutable(), attachments, spanners);
+    }
+
+    private static StaffMeasure TransposeStaffMeasure(StaffMeasure staffMeasure, Interval interval)
+    {
+        ImmutableArray<Voice>.Builder voices = ImmutableArray.CreateBuilder<Voice>(staffMeasure.Voices.Length);
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            ImmutableArray<MusicEvent>.Builder events = ImmutableArray.CreateBuilder<MusicEvent>(voice.Events.Length);
+            foreach (MusicEvent musicEvent in voice.Events)
+            {
+                events.Add(TransposeEvent(musicEvent, interval));
+            }
+
+            voices.Add(voice with { Events = events.MoveToImmutable() });
+        }
+
+        return staffMeasure with { Voices = voices.MoveToImmutable() };
+    }
+
+    private static MusicEvent TransposeEvent(MusicEvent musicEvent, Interval interval)
+    {
+        if (musicEvent is Chord chord)
+        {
+            ImmutableArray<Note>.Builder notes = ImmutableArray.CreateBuilder<Note>(chord.Notes.Length);
+            foreach (Note note in chord.Notes)
+            {
+                notes.Add(note with { Pitch = note.Pitch.Transpose(interval) });
+            }
+
+            return chord with { Notes = notes.MoveToImmutable() };
+        }
+
+        if (musicEvent is TupletGroup group)
+        {
+            ImmutableArray<MusicEvent>.Builder children = ImmutableArray.CreateBuilder<MusicEvent>(group.Children.Length);
+            foreach (MusicEvent child in group.Children)
+            {
+                children.Add(TransposeEvent(child, interval));
+            }
+
+            return group with { Children = children.MoveToImmutable() };
+        }
+
+        return musicEvent;
     }
 
     private static IEnumerable<Attachment> FilterAttachments(ImmutableArray<Attachment> attachments,

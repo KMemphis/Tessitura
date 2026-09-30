@@ -120,6 +120,48 @@ public sealed class ScoreModelTests
         Assert.Throws<ArgumentException>(() => new ScorePartView("Flute", [0, 0]));
     }
 
+    [Fact]
+    public void BbClarinetPartShowsWrittenAndConcertPitchesAsViewsOfTheSameScore()
+    {
+        EventId noteId = new(Guid.NewGuid());
+        Pitch writtenPitch = new(Step.D, 0, 4);
+        Score score = new(new ScoreMetadata("Clarinet", ""),
+            [new Instrument("Clarinet in B-flat", [new Staff("Clarinet")], new Interval(-1, -2))],
+            [new Measure(1, new TimeSignature(4, 4), new KeySignature(0))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1,
+                [
+                    new Chord(noteId, Fraction.Zero, new Duration(NoteValue.Quarter, 0),
+                        [new Note(writtenPitch)], StemDirection.Auto),
+                    new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1)),
+                ])])));
+        ScorePartView part = new("Clarinet in B-flat", [0]);
+
+        Score written = ScorePartProjector.Project(score, part, PitchDisplayMode.Written);
+        Score concert = ScorePartProjector.Project(score, part, PitchDisplayMode.Concert);
+        Chord writtenChord = Assert.IsType<Chord>(written.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]);
+        Chord concertChord = Assert.IsType<Chord>(concert.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]);
+
+        Assert.Equal(writtenPitch, writtenChord.Notes[0].Pitch);
+        Assert.Equal(new Pitch(Step.C, 0, 4), concertChord.Notes[0].Pitch);
+        Assert.Equal(new KeySignature(0), written.Measures[0].KeySignature);
+        Assert.Equal(new KeySignature(0), concert.Measures[0].KeySignature);
+        Assert.Equal(default, Assert.Single(concert.Instruments).Transposition);
+        Assert.Equal(writtenPitch, Assert.IsType<Chord>(
+            score.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]).Notes[0].Pitch);
+    }
+
+    [Fact]
+    public void KeySignaturesTransposeBetweenConventionalMajorKeysAndBack()
+    {
+        KeySignature concertC = new KeySignature(0);
+        KeySignature writtenD = new KeySignature(2);
+        Interval writtenToConcert = new(-1, -2);
+
+        Assert.Equal(concertC, writtenD.Transpose(writtenToConcert));
+        Assert.Equal(writtenD, concertC.Transpose(writtenToConcert.Inverse()));
+    }
+
     private static StaffMeasure MakeQuarter(EventId id, Pitch pitch) => new(
         [new Voice(1, [new Chord(id, Fraction.Zero, new Duration(NoteValue.Quarter, 0), [new Note(pitch)], StemDirection.Auto),
             new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1))])]);

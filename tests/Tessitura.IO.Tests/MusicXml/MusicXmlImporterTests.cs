@@ -86,6 +86,19 @@ public sealed class MusicXmlImporterTests
     }
 
     [Fact]
+    public void ImportsTransposingInstrumentsAndNormalizesTheirWrittenKeysToConcertKey()
+    {
+        Score score = Import("72a-TransposingInstruments.musicxml").Score;
+        Chord trumpetNote = score.Content[new StaffMeasureKey(0, 0)].Voices[0].Events.OfType<Chord>().First();
+
+        Assert.Equal(new Interval(-1, -2), score.Instruments[0].Transposition);
+        Assert.Equal(new Interval(-5, -9), score.Instruments[1].Transposition);
+        Assert.Equal(default, score.Instruments[2].Transposition);
+        Assert.Equal(new KeySignature(0), score.Measures[0].KeySignature);
+        Assert.Equal(new Pitch(Step.D, 0, 4), trumpetNote.Notes[0].Pitch);
+    }
+
+    [Fact]
     public void ImportsCompressedFilesAndAdditiveMetersWithWarnings()
     {
         MusicXmlImportResult compressed = Import("90a-Compressed-MusicXML.mxl");

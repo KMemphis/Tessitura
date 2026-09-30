@@ -136,12 +136,33 @@ public static class MusicXmlImporter
                     }
                 }
 
+                bool foundKey = false;
                 foreach (PartData part in partData)
                 {
                     if (part.Keys.TryGetValue(m, out KeySignature key))
                     {
-                        currentKey = key;
-                        break;
+                        KeySignature concertKey;
+                        try
+                        {
+                            concertKey = key.Transpose(part.Transposition);
+                        }
+                        catch (NotSupportedException)
+                        {
+                            WarnOnce($"{part.Id}: key transposition",
+                                $"{part.Id}: transposed key signature is outside the supported seven sharps or flats");
+                            concertKey = currentKey;
+                        }
+
+                        if (foundKey && currentKey != concertKey)
+                        {
+                            WarnOnce($"{part.Id}: key mismatch",
+                                "instrument parts declare different concert key signatures; the first is used");
+                        }
+                        else
+                        {
+                            currentKey = concertKey;
+                            foundKey = true;
+                        }
                     }
                 }
 
@@ -165,7 +186,7 @@ public static class MusicXmlImporter
                         part.Clefs.GetValueOrDefault(s, Clef.Treble)));
                 }
 
-                instruments.Add(new Instrument(part.Name, staves.ToImmutable()));
+                instruments.Add(new Instrument(part.Name, staves.ToImmutable(), part.Transposition));
             }
 
             ImmutableArray<Measure>.Builder measures = ImmutableArray.CreateBuilder<Measure>(measureCount);
@@ -541,8 +562,58 @@ public static class MusicXmlImporter
                     case "clef":
                         ReadClef(element, data, measureIndex, where);
                         break;
+                    case "transpose":
+                        ReadTransposition(element, data, where);
+                        break;
                 }
             }
+        }
+
+        private void ReadTransposition(XElement element, PartData data, string where)
+        {
+            int diatonic = 0;
+            int chromatic = 0;
+            int octaveChange = 0;
+            decimal chromaticValue = 0;
+            XElement? diatonicElement = element.Elements().FirstOrDefault(e => e.Name.LocalName == "diatonic");
+            XElement? chromaticElement = element.Elements().FirstOrDefault(e => e.Name.LocalName == "chromatic");
+            XElement? octaveElement = element.Elements().FirstOrDefault(e => e.Name.LocalName == "octave-change");
+            if ((diatonicElement is not null && !int.TryParse(diatonicElement.Value.Trim(),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out diatonic)) ||
+                (chromaticElement is not null && (!decimal.TryParse(chromaticElement.Value.Trim(),
+                    NumberStyles.Number, CultureInfo.InvariantCulture, out chromaticValue) ||
+                    decimal.Truncate(chromaticValue) != chromaticValue ||
+                    chromaticValue is < int.MinValue or > int.MaxValue)) ||
+                (octaveElement is not null && !int.TryParse(octaveElement.Value.Trim(),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out octaveChange)))
+            {
+                Warn(where, "fractional or invalid transposition ignored; only whole semitones are supported");
+                return;
+            }
+
+            chromatic = (int)chromaticValue;
+
+            Interval transposition;
+            try
+            {
+                transposition = new Interval(checked(diatonic + octaveChange * 7),
+                    checked(chromatic + octaveChange * 12));
+            }
+            catch (OverflowException)
+            {
+                Warn(where, "transposition outside the supported range ignored");
+                return;
+            }
+
+            if (data.HasTransposition && data.Transposition != transposition)
+            {
+                WarnOnce($"{data.Id}: transposition change",
+                    $"{data.Id}: transposition changes during the piece; the initial interval is used");
+                return;
+            }
+
+            data.Transposition = transposition;
+            data.HasTransposition = true;
         }
 
         private TimeSignature? ReadTime(XElement time)
@@ -916,6 +987,10 @@ public static class MusicXmlImporter
         public int StaffCount { get; set; } = 1;
 
         public int MeasureCount { get; set; }
+
+        public Interval Transposition { get; set; }
+
+        public bool HasTransposition { get; set; }
 
         public Dictionary<int, TimeSignature> Times { get; } = [];
 
