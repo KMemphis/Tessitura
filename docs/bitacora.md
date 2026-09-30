@@ -107,3 +107,10 @@
 - Se añadió `DisplayListRenderer` en Rendering para dibujar `Page` sobre `SKCanvas` y grabarla como `SKPicture`; admite glifos, líneas, curvas, texto y rectángulos. Engraving permanece independiente de SkiaSharp.
 - Dos pruebas nuevas comprueban que la nota de F0.10 coincide píxel por píxel con el renderizado provisional y con la reproducción del `SKPicture`, y que se dibujan curvas, texto y rectángulos.
 - `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 38 pruebas sin fallos ni omisiones. No quedan pendientes de F1.2. Siguiente tarea: F1.3, imágenes de referencia.
+
+## 2026-09-29 · F1.3 Imágenes de referencia
+
+- Se añadió una comparación PNG por canales con tolerancia, límite de píxeles distintos y PNG de diferencias. La prueba del ejemplo F0.10 usa las capturas de renderizado ya revisadas en F0, según la plataforma; no se sustituyó ninguna imagen aprobada.
+- En este Mac la captura aprobada difiere de un renderizado nuevo en 168 de 800.000 píxeles con igualdad estricta y en 90 píxeles con tolerancia de 4 niveles por canal. Se fijó un límite de 100 píxeles para esa tolerancia. Cuando una comparación excede el límite, conserva el candidato y la diferencia; CI los adjunta.
+- Una prueba cambia `noteheadBlack` por otro glifo, exige que falle y se genere la diferencia, aprueba una copia temporal y confirma que entonces pasa. La aprobación temporal no toca las referencias del repositorio.
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 40 pruebas sin fallos ni omisiones. Siguiente tarea: F1.4, estilo y valores de grabado.
