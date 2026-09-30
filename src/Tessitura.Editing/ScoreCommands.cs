@@ -62,7 +62,7 @@ public sealed record ChangePitchCommand(EventId EventId, int NoteIndex, Pitch Pi
         context,
         EventId,
         NoteIndex,
-        _ => new Note(Pitch));
+        note => note with { Pitch = Pitch });
 }
 
 /// <summary>Changes the chromatic alteration of one written note.</summary>
@@ -77,7 +77,22 @@ public sealed record ChangeAlterationCommand(EventId EventId, int NoteIndex, int
         context,
         EventId,
         NoteIndex,
-        note => new Note(new Pitch(note.Pitch.Step, Alteration, note.Pitch.Octave)));
+        note => note with { Pitch = new Pitch(note.Pitch.Step, Alteration, note.Pitch.Octave) });
+}
+
+/// <summary>Changes whether one written note is tied to its following matching note.</summary>
+public sealed record ChangeTieCommand(EventId EventId, int NoteIndex, bool TiedToNext) : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Change tie";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context) => ScoreCommandEditor.UpdateNote(
+        score,
+        context,
+        EventId,
+        NoteIndex,
+        note => note with { TiedToNext = TiedToNext });
 }
 
 /// <summary>Changes the notated duration of a chord or rest.</summary>

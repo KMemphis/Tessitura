@@ -109,7 +109,8 @@ public sealed record Rest(EventId Id, Fraction Onset, Duration Duration) : Music
 
 /// <summary>Contains one written note.</summary>
 /// <param name="Pitch">The written pitch.</param>
-public sealed record Note(Pitch Pitch);
+/// <param name="TiedToNext">Whether this note is tied to its following matching note.</param>
+public sealed record Note(Pitch Pitch, bool TiedToNext = false);
 
 /// <summary>Contains immutable score content and its global measure timeline.</summary>
 /// <param name="Metadata">The textual credits.</param>

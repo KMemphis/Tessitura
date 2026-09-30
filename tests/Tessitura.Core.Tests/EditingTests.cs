@@ -89,6 +89,27 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void ChangeTieUpdatesOneNoteAndRoundTripsThroughHistory()
+    {
+        Score original = CreateScore();
+        Score tied = new ChangeTieCommand(MainEventId, 0, TiedToNext: true).Apply(original, Context);
+        History history = new(original);
+        history.Push(tied, "Change tie", Selection.Empty);
+
+        Assert.False(Assert.IsType<Chord>(GetEvent(original)).Notes[0].TiedToNext);
+        Assert.True(Assert.IsType<Chord>(GetEvent(tied)).Notes[0].TiedToNext);
+        Assert.Equal(original, history.Undo());
+        Assert.Equal(tied, history.Redo());
+
+        Score repitched = new ChangePitchCommand(MainEventId, 0, new Pitch(Step.D, 0, 4))
+            .Apply(tied, Context);
+        Assert.True(Assert.IsType<Chord>(GetEvent(repitched)).Notes[0].TiedToNext);
+
+        Score untied = new ChangeTieCommand(MainEventId, 0, TiedToNext: false).Apply(tied, Context);
+        Assert.False(Assert.IsType<Chord>(GetEvent(untied)).Notes[0].TiedToNext);
+    }
+
+    [Fact]
     public void HistoryUndoAndRedoRestoreScoreAndSelectionSnapshots()
     {
         Score initial = CreateScore();
@@ -173,7 +194,7 @@ public sealed class EditingTests
     private static IScoreCommand CreateCommand(int value, Score score)
     {
         MusicEvent musicEvent = GetEvent(score);
-        return Math.Abs((long)value % 6) switch
+        return Math.Abs((long)value % 7) switch
         {
             0 => new InsertNoteCommand(MainEventId, CreatePitch(value)),
             1 when musicEvent is Chord => new ChangePitchCommand(MainEventId, 0, CreatePitch(value)),
@@ -182,6 +203,7 @@ public sealed class EditingTests
             4 => new ChangeDotCountCommand(MainEventId, (int)(Math.Abs((long)value) % 4)),
             5 when musicEvent is Chord chord && chord.Notes.Length > 1 =>
                 new DeleteNoteCommand(MainEventId, chord.Notes.Length - 1),
+            6 when musicEvent is Chord => new ChangeTieCommand(MainEventId, 0, TiedToNext: value % 2 == 0),
             _ => new InsertNoteCommand(MainEventId, CreatePitch(value)),
         };
     }

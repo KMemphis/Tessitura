@@ -208,4 +208,11 @@
 - Se añadió `IScoreCommand` y `EditContext` en Editing. Los comandos insertan y borran notas, cambian altura escrita, alteración, duración y puntillos; insertar en un silencio crea un acorde y borrar su última nota lo convierte en silencio, conservando instante y duración.
 - `History` conserva instantáneas inmutables y selección, deshace y rehace, descarta la rama de rehacer después de una edición nueva y permite consultar si hay pasos disponibles. No se modificó el modelo de Core.
 - Ocho pruebas cubren comandos, selección, bifurcación del historial y una propiedad FsCheck con secuencias generadas. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 132 pruebas, sin fallos ni omisiones.
-- F2.2b implementará el comando de ligadura y requiere extender `Note`. La definición representa la ligadura dentro de `Notes[]`; la decisión de modelo está pendiente de autorización del propietario, según `AGENTS.md`.
+- F2.2b implementa el comando de ligadura con un indicador en `Note`, como establece el modelo de la definición.
+
+## 2026-09-30 · F2.2b Ligaduras de unión
+
+- Se añadió `Note.TiedToNext` con valor predeterminado falso y `ChangeTieCommand`, que modifica la nota seleccionada sin mutar la instantánea anterior. Los comandos de altura y alteración conservan el estado de ligadura.
+- Una prueba verifica activación, desactivación, preservación al cambiar altura y el ciclo de deshacer/rehacer. La propiedad FsCheck de historial ahora genera también cambios de ligadura y deshace la secuencia completa.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 133 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.3, notación rítmica automática.
