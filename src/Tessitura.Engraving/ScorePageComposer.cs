@@ -37,6 +37,23 @@ public sealed class ScorePageComposer
     private readonly SmuflMetadata _metadata;
     private readonly Style _style;
     private readonly HorizontalSpacer _horizontalSpacer = new();
+    private readonly object _annotationCacheGate = new();
+    private readonly object _skylineCacheGate = new();
+    private ImmutableArray<Attachment> _cachedAnnotationList;
+    private Dictionary<EventId, List<Attachment>>? _cachedAttachmentIndex;
+    private ImmutableArray<LyricAnchor> _cachedLyricAnchors;
+    private int _cachedLyricAttachmentCount;
+    private ImmutableArray<Spanner> _cachedSpannerDefinitions;
+    private Dictionary<EventId, SpannerLocation>? _cachedSpannerLocations;
+    private int _cachedSpannerEndpointCount;
+    private bool _cachedHasCrossStaffSpanners;
+    private Score? _cachedSkylineSource;
+    private Score? _cachedSkylineDisplayScore;
+    private ScoreLayoutResult? _cachedSkylineLayout;
+    private ImmutableArray<int> _cachedSkylinePartIndices;
+    private PitchDisplayMode _cachedSkylinePitchMode;
+    private StaffSkyline[][]? _cachedSkylineExtents;
+    private int _skylineSystemMeasureCount;
 
     /// <summary>Creates a score-page composer for one music font and engraving style.</summary>
     /// <param name="metadata">The selected SMuFL font metrics and glyph map.</param>
@@ -46,6 +63,9 @@ public sealed class ScorePageComposer
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         _style = style ?? throw new ArgumentNullException(nameof(style));
     }
+
+    /// <summary>Gets how many systems have had their skyline measured by this composer instance.</summary>
+    public int SkylineSystemMeasureCount => Volatile.Read(ref _skylineSystemMeasureCount);
 
     /// <summary>Gets the staff-space size that fits all staves on an A4 page.</summary>
     /// <param name="score">The immutable score snapshot.</param>
@@ -62,8 +82,8 @@ public sealed class ScorePageComposer
         double staffPitch = StaffHeightSpaces + StaffGapSpaces;
         if (score.AttachmentList.Length > 0 || score.SpannerList.Length > 0)
         {
-            // Marks above and below the staves need room: shrink the staff space so the skylines fit on the page.
-            staffPitch += 22;
+            // Keep text-rich compact scores legible; large ensembles use measured skylines instead of a fixed reserve.
+            staffPitch += staffCount <= 4 ? 22 : 3;
         }
 
         double maximumStaffSpace = (PageHeightPoints - 2 * VerticalMarginPoints) /
@@ -86,14 +106,23 @@ public sealed class ScorePageComposer
         double staffSpace = GetStaffSpacePoints(score);
         double headerWidth = 0;
         int headerStaffCount = CountStaves(score);
+        Dictionary<HeaderCacheKey, double> headerWidths = [];
         for (int measureIndex = 0; measureIndex < score.Measures.Length; measureIndex++)
         {
             for (int staffIndex = 0; staffIndex < headerStaffCount; staffIndex++)
             {
-                double currentWidth = _horizontalSpacer.BuildHeader(_metadata,
-                    ClefGlyphName(GetStaffClef(score, staffIndex)),
-                    ScorePitchView.GetKeySignature(score, staffIndex, measureIndex, pitchDisplayMode),
-                    score.Measures[measureIndex].TimeSignature, _style).MusicStartX;
+                string clefGlyph = ClefGlyphName(GetStaffClef(score, staffIndex));
+                KeySignature keySignature = ScorePitchView.GetKeySignature(score, staffIndex,
+                    measureIndex, pitchDisplayMode);
+                TimeSignature timeSignature = score.Measures[measureIndex].TimeSignature;
+                HeaderCacheKey key = new(clefGlyph, keySignature, timeSignature);
+                if (!headerWidths.TryGetValue(key, out double currentWidth))
+                {
+                    currentWidth = _horizontalSpacer.BuildHeader(_metadata, clefGlyph,
+                        keySignature, timeSignature, _style).MusicStartX;
+                    headerWidths.Add(key, currentWidth);
+                }
+
                 headerWidth = Math.Max(headerWidth, currentWidth);
             }
         }
@@ -124,7 +153,8 @@ public sealed class ScorePageComposer
         ArgumentNullException.ThrowIfNull(score);
         Score displayScore = ScorePitchView.Project(score, pitchDisplayMode);
         return ComposeCore(displayScore, layout, measureIndex, cursor, cancellationToken,
-            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
+            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode,
+            cacheSource: score);
     }
 
     /// <summary>Composes every system into one tall page without page breaks.</summary>
@@ -142,7 +172,8 @@ public sealed class ScorePageComposer
         ArgumentNullException.ThrowIfNull(score);
         Score displayScore = ScorePitchView.Project(score, pitchDisplayMode);
         return ComposeCore(displayScore, layout, measureIndex, cursor, cancellationToken,
-            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode, continuous: true);
+            ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode, continuous: true,
+            cacheSource: score);
     }
 
     /// <summary>Composes a linked instrument part and groups its consecutive full-measure rests.</summary>
@@ -168,13 +199,15 @@ public sealed class ScorePageComposer
         }
 
         return ComposeCore(partScore, layout, measureIndex, cursor, cancellationToken,
-            MultiMeasureRestGrouper.FindGroups(partScore), pitchDisplayMode);
+            MultiMeasureRestGrouper.FindGroups(partScore), pitchDisplayMode,
+            cacheSource: sourceScore, cachePartIndices: part.InstrumentIndices);
     }
 
     private ScorePageComposition ComposeCore(Score score, ScoreLayoutResult layout, int measureIndex,
         EngravingCursor? cursor, CancellationToken cancellationToken,
         ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode,
-        bool continuous = false)
+        bool continuous = false, Score? cacheSource = null,
+        ImmutableArray<int> cachePartIndices = default)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(layout);
@@ -193,8 +226,8 @@ public sealed class ScorePageComposer
             : PageHeightPoints / staffSpace;
         double leftMargin = HorizontalMarginPoints / staffSpace;
         double topMargin = VerticalMarginPoints / staffSpace;
-        Dictionary<EventId, List<Attachment>> attachmentIndex = BuildAttachmentIndex(score);
-        ImmutableArray<LyricAnchor> lyricAnchors = BuildLyricAnchors(score, attachmentIndex);
+        (Dictionary<EventId, List<Attachment>> attachmentIndex,
+            ImmutableArray<LyricAnchor> lyricAnchors) = GetAnnotationData(score);
         TimeSignature firstMeter = score.Measures[system.Range.StartIndex].TimeSignature;
         int staffCount = CountStaves(score);
         SystemHeaderLayout header = BuildSystemHeader(score, system.Range.StartIndex, staffCount, pitchDisplayMode);
@@ -210,8 +243,9 @@ public sealed class ScorePageComposer
             try
             {
                 verticalLayout = BuildVerticalLayout(layout.Systems, staffCount, pageHeight, topMargin,
-                    MeasureExtents(score, layout, verticalLayout, staffCount, placer, leftMargin,
-                        attachmentIndex, lyricAnchors, cancellationToken, pitchDisplayMode));
+                    GetMeasureExtents(score, cacheSource ?? score, layout, verticalLayout, staffCount, placer,
+                        leftMargin, attachmentIndex, lyricAnchors, cancellationToken, pitchDisplayMode,
+                        cachePartIndices));
             }
             catch (InvalidOperationException)
             {
@@ -249,7 +283,8 @@ public sealed class ScorePageComposer
     private void DrawSystem(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, ScoreLayoutResult layout,
         int pageSystemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer, SystemState state,
         double leftMargin, CancellationToken cancellationToken,
-        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode)
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups, PitchDisplayMode pitchDisplayMode,
+        int? staffFilter = null)
     {
         EventId staffLineId = new(Guid.Empty);
         SystemLine pageSystem = layout.Systems[pageSystemIndex];
@@ -279,6 +314,11 @@ public sealed class ScorePageComposer
         int systemFirstPrimitive = primitives.Count;
         for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
         {
+            if (staffFilter.HasValue && staffFilter.Value != staffIndex)
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             double staffTop = placement.StaffTops[staffIndex];
             int staffStart = primitives.Count;
@@ -342,8 +382,11 @@ public sealed class ScorePageComposer
         ResolveAnnotations(primitives, state, systemFirstPrimitive);
         DrawLyricConnectors(primitives, score, pageSystem, placement, state, musicStartX, musicEndX);
         AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
-        DrawRepeatAnnotations(primitives, score, pageSystem, placement,
-            measureWidths, musicStartX, staffCount);
+        if (!staffFilter.HasValue || staffFilter.Value == 0)
+        {
+            DrawRepeatAnnotations(primitives, score, pageSystem, placement,
+                measureWidths, musicStartX, staffCount);
+        }
     }
 
     private static ImmutableArray<MultiMeasureRestSegment> BuildMultiMeasureRestSegments(
@@ -873,6 +916,98 @@ public sealed class ScorePageComposer
         return index;
     }
 
+    private (Dictionary<EventId, List<Attachment>> Attachments, ImmutableArray<LyricAnchor> LyricAnchors)
+        GetAnnotationData(Score score)
+    {
+        lock (_annotationCacheGate)
+        {
+            if (_cachedAttachmentIndex is null || _cachedAnnotationList != score.AttachmentList)
+            {
+                _cachedAnnotationList = score.AttachmentList;
+                _cachedAttachmentIndex = BuildAttachmentIndex(score);
+                _cachedLyricAnchors = BuildLyricAnchors(score, _cachedAttachmentIndex);
+                _cachedLyricAttachmentCount = CountLyricAttachments(score.AttachmentList);
+            }
+            else if (!AreLyricAnchorsValid(score, _cachedLyricAnchors,
+                _cachedLyricAttachmentCount))
+            {
+                _cachedLyricAnchors = BuildLyricAnchors(score, _cachedAttachmentIndex);
+            }
+
+            return (_cachedAttachmentIndex, _cachedLyricAnchors);
+        }
+    }
+
+    private static int CountLyricAttachments(ImmutableArray<Attachment> attachments)
+    {
+        int count = 0;
+        foreach (Attachment attachment in attachments)
+        {
+            if (attachment is LyricAttachment)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool AreLyricAnchorsValid(Score score, ImmutableArray<LyricAnchor> anchors,
+        int lyricAttachmentCount)
+    {
+        if (anchors.Length != lyricAttachmentCount)
+        {
+            return false;
+        }
+
+        foreach (LyricAnchor anchor in anchors)
+        {
+            if (!score.Content.TryGetValue(new StaffMeasureKey(anchor.Staff, anchor.MeasureIndex),
+                out StaffMeasure? staffMeasure))
+            {
+                return false;
+            }
+
+            bool foundVoice = false;
+            foreach (Voice voice in staffMeasure.Voices)
+            {
+                if (voice.Number != anchor.Voice)
+                {
+                    continue;
+                }
+
+                foundVoice = true;
+                if (!ContainsEvent(voice.Events, anchor.Event))
+                {
+                    return false;
+                }
+
+                break;
+            }
+
+            if (!foundVoice)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ContainsEvent(ImmutableArray<MusicEvent> events, EventId eventId)
+    {
+        foreach (MusicEvent musicEvent in events)
+        {
+            if (musicEvent.Id == eventId || musicEvent is TupletGroup group &&
+                ContainsEvent(group.Children, eventId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static ImmutableArray<LyricAnchor> BuildLyricAnchors(Score score,
         Dictionary<EventId, List<Attachment>> attachments)
     {
@@ -909,27 +1044,44 @@ public sealed class ScorePageComposer
 
                 foreach (Voice voice in measure.Voices)
                 {
-                    foreach ((MusicEvent musicEvent, _, _) in voice.Events.Flatten())
+                    foreach (MusicEvent musicEvent in voice.Events)
                     {
-                        if (!attachments.TryGetValue(musicEvent.Id, out List<Attachment>? attached))
-                        {
-                            continue;
-                        }
-
-                        foreach (Attachment attachment in attached)
-                        {
-                            if (attachment is LyricAttachment lyric)
-                            {
-                                anchors.Add(new LyricAnchor(musicEvent.Id, measureIndex, staff,
-                                    voice.Number, lyric));
-                            }
-                        }
+                        AppendLyricAnchors(musicEvent, measureIndex, staff, voice.Number,
+                            attachments, anchors);
                     }
                 }
             }
         }
 
         return anchors.ToImmutable();
+    }
+
+    private static void AppendLyricAnchors(MusicEvent musicEvent, int measureIndex, int staffIndex,
+        int voiceNumber, Dictionary<EventId, List<Attachment>> attachments,
+        ImmutableArray<LyricAnchor>.Builder anchors)
+    {
+        if (musicEvent is TupletGroup group)
+        {
+            foreach (MusicEvent child in group.Children)
+            {
+                AppendLyricAnchors(child, measureIndex, staffIndex, voiceNumber, attachments, anchors);
+            }
+
+            return;
+        }
+
+        if (!attachments.TryGetValue(musicEvent.Id, out List<Attachment>? attached))
+        {
+            return;
+        }
+
+        foreach (Attachment attachment in attached)
+        {
+            if (attachment is LyricAttachment lyric)
+            {
+                anchors.Add(new LyricAnchor(musicEvent.Id, measureIndex, staffIndex, voiceNumber, lyric));
+            }
+        }
     }
 
     // Behind Bars, Slurs: the curve goes on the notehead side, opposite the stems, and above when stems differ;
@@ -1126,7 +1278,7 @@ public sealed class ScorePageComposer
     {
         // Obstacles are kept per staff: a staff's marks only have to clear that staff's own notation, and the
         // vertical layout then keeps neighbouring staves far enough apart.
-        Dictionary<int, List<DisplayBox>> obstacles = [];
+        Dictionary<int, AnnotationObstacleIndex> obstacles = [];
         for (int i = firstPrimitive; i < primitives.Count; i++)
         {
             DrawingPrimitive primitive = primitives[i];
@@ -1136,26 +1288,26 @@ public sealed class ScorePageComposer
                 continue;
             }
 
-            if (!obstacles.TryGetValue(staff, out List<DisplayBox>? list))
+            if (!obstacles.TryGetValue(staff, out AnnotationObstacleIndex? index))
             {
-                list = [];
-                obstacles[staff] = list;
+                index = new AnnotationObstacleIndex();
+                obstacles[staff] = index;
             }
 
-            list.Add(primitive.Bounds);
+            index.Add(primitive.Bounds);
         }
 
         foreach (AnnotationGroup group in state.Annotations.OrderBy(g => g.StaffIndex).ThenBy(g => g.Above).ThenBy(g => g.Priority))
         {
-            if (!obstacles.TryGetValue(group.StaffIndex, out List<DisplayBox>? own))
+            if (!obstacles.TryGetValue(group.StaffIndex, out AnnotationObstacleIndex? own))
             {
-                own = [];
+                own = new AnnotationObstacleIndex();
                 obstacles[group.StaffIndex] = own;
             }
 
             DisplayBox box = Union(group.Items);
             double shift = 0;
-            for (int step = 0; step < 60 && Collides(box, shift, own); step++)
+            for (int step = 0; step < 60 && own.Collides(box, shift); step++)
             {
                 shift += group.Above ? -0.5 : 0.5;
             }
@@ -1189,21 +1341,6 @@ public sealed class ScorePageComposer
         }
 
         return new DisplayBox(left, top, right - left, bottom - top);
-    }
-
-    private static bool Collides(DisplayBox box, double shift, List<DisplayBox> obstacles)
-    {
-        const double air = 0.15;
-        foreach (DisplayBox other in obstacles)
-        {
-            if (box.X < other.X + other.Width + air && other.X < box.X + box.Width + air &&
-                box.Y + shift < other.Y + other.Height + air && other.Y < box.Y + shift + box.Height + air)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static DrawingPrimitive Translate(DrawingPrimitive primitive, double dy)
@@ -1769,45 +1906,461 @@ public sealed class ScorePageComposer
         return total;
     }
 
-    private StaffSkyline[][] MeasureExtents(Score score, ScoreLayoutResult layout, VerticalLayoutResult provisional,
-        int staffCount, StaffElementPlacer placer, double leftMargin,
-        Dictionary<EventId, List<Attachment>> attachments, ImmutableArray<LyricAnchor> lyricAnchors,
-        CancellationToken cancellationToken, PitchDisplayMode pitchDisplayMode)
+    private StaffSkyline[][] GetMeasureExtents(Score score, Score cacheSource,
+        ScoreLayoutResult layout, VerticalLayoutResult provisional, int staffCount,
+        StaffElementPlacer placer, double leftMargin, Dictionary<EventId, List<Attachment>> attachments,
+        ImmutableArray<LyricAnchor> lyricAnchors, CancellationToken cancellationToken,
+        PitchDisplayMode pitchDisplayMode, ImmutableArray<int> partIndices)
     {
-        StaffSkyline[][] extents = new StaffSkyline[layout.Systems.Length][];
-        for (int systemIndex = 0; systemIndex < layout.Systems.Length; systemIndex++)
+        lock (_skylineCacheGate)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SystemVerticalPlacement placement = provisional.Systems[systemIndex];
-            ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
-            SystemState scratch = new(attachments, lyricAnchors);
-            DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch,
-                leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
-            double[] top = new double[staffCount];
-            double[] bottom = new double[staffCount];
-            Array.Fill(top, 0.5);
-            Array.Fill(bottom, 0.5);
-            foreach (DrawingPrimitive primitive in drawn)
+            if (ReferenceEquals(cacheSource, _cachedSkylineSource) &&
+                pitchDisplayMode == _cachedSkylinePitchMode &&
+                PartIndicesEqual(partIndices, _cachedSkylinePartIndices) &&
+                _cachedSkylineExtents is not null &&
+                LayoutsEquivalent(layout, _cachedSkylineLayout))
             {
-                // Staff lines, headers and barlines belong to the staves themselves.
-                if (primitive.ElementId.Value == Guid.Empty || primitive is DisplayLists.Path)
-                {
-                    continue;
-                }
-
-                if (!scratch.StaffByPrimitive.TryGetValue(primitive, out int nearest))
-                {
-                    continue;
-                }
-
-                top[nearest] = Math.Max(top[nearest], placement.StaffTops[nearest] - primitive.Bounds.Y);
-                bottom[nearest] = Math.Max(bottom[nearest], primitive.Bounds.Y + primitive.Bounds.Height - (placement.StaffTops[nearest] + 4));
+                return _cachedSkylineExtents;
             }
 
-            extents[systemIndex] = [.. Enumerable.Range(0, staffCount).Select(i => new StaffSkyline(top[i], bottom[i]))];
+            bool canReuseSystems = _cachedSkylineExtents is not null &&
+                _cachedSkylineSource is not null && _cachedSkylineDisplayScore is not null &&
+                _cachedSkylineLayout is not null && pitchDisplayMode == _cachedSkylinePitchMode &&
+                PartIndicesEqual(partIndices, _cachedSkylinePartIndices) &&
+                cacheSource.Instruments == _cachedSkylineSource.Instruments &&
+                cacheSource.AttachmentList == _cachedSkylineSource.AttachmentList &&
+                cacheSource.SpannerList == _cachedSkylineSource.SpannerList &&
+                CountStaves(_cachedSkylineDisplayScore) == staffCount;
+            StaffSkyline[][] extents = new StaffSkyline[layout.Systems.Length][];
+            bool crossStaffSpannersChecked = false;
+            bool hasCrossStaffSpanners = false;
+            for (int systemIndex = 0; systemIndex < layout.Systems.Length; systemIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SystemLine system = layout.Systems[systemIndex];
+                if (canReuseSystems && TryFindEquivalentSystem(system, _cachedSkylineLayout!.Systems,
+                    out int cachedSystemIndex))
+                {
+                    StaffSkyline[] cachedStaffExtents = _cachedSkylineExtents![cachedSystemIndex];
+                    if (SystemContentEquivalent(score, _cachedSkylineDisplayScore!, system.Range))
+                    {
+                        extents[systemIndex] = cachedStaffExtents;
+                    }
+                    else if (SystemMeasuresEquivalent(score, _cachedSkylineDisplayScore!, system.Range))
+                    {
+                        if (!crossStaffSpannersChecked)
+                        {
+                            hasCrossStaffSpanners = HasCrossStaffSpanners(score);
+                            crossStaffSpannersChecked = true;
+                        }
+
+                        if (!hasCrossStaffSpanners)
+                        {
+                            StaffSkyline[] staffExtents = new StaffSkyline[staffCount];
+                            int changedStaffCount = 0;
+                            for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+                            {
+                                bool unchanged = StaffContentEquivalent(score,
+                                    _cachedSkylineDisplayScore!, system.Range, staffIndex);
+                                if (unchanged)
+                                {
+                                    staffExtents[staffIndex] = cachedStaffExtents[staffIndex];
+                                }
+                                else
+                                {
+                                    changedStaffCount++;
+                                }
+                            }
+
+                            if (changedStaffCount > 0 && changedStaffCount * 2 < staffCount)
+                            {
+                                for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+                                {
+                                    if (!StaffContentEquivalent(score, _cachedSkylineDisplayScore!,
+                                        system.Range, staffIndex))
+                                    {
+                                        staffExtents[staffIndex] = MeasureStaffExtents(score, layout,
+                                            systemIndex, provisional.Systems[systemIndex], staffCount,
+                                            placer, leftMargin, attachments, lyricAnchors,
+                                            cancellationToken, pitchDisplayMode, staffIndex);
+                                    }
+                                }
+
+                                extents[systemIndex] = staffExtents;
+                                Interlocked.Increment(ref _skylineSystemMeasureCount);
+                            }
+                            else
+                            {
+                                extents[systemIndex] = MeasureSystemExtents(score, layout,
+                                    systemIndex, provisional.Systems[systemIndex], staffCount,
+                                    placer, leftMargin, attachments, lyricAnchors,
+                                    cancellationToken, pitchDisplayMode);
+                                Interlocked.Increment(ref _skylineSystemMeasureCount);
+                            }
+                        }
+                        else
+                        {
+                            extents[systemIndex] = MeasureSystemExtents(score, layout,
+                                systemIndex, provisional.Systems[systemIndex], staffCount,
+                                placer, leftMargin, attachments, lyricAnchors,
+                                cancellationToken, pitchDisplayMode);
+                            Interlocked.Increment(ref _skylineSystemMeasureCount);
+                        }
+                    }
+                    else
+                    {
+                        extents[systemIndex] = MeasureSystemExtents(score, layout,
+                            systemIndex, provisional.Systems[systemIndex], staffCount,
+                            placer, leftMargin, attachments, lyricAnchors,
+                            cancellationToken, pitchDisplayMode);
+                        Interlocked.Increment(ref _skylineSystemMeasureCount);
+                    }
+                }
+                else
+                {
+                    extents[systemIndex] = MeasureSystemExtents(score, layout, systemIndex,
+                        provisional.Systems[systemIndex], staffCount, placer, leftMargin,
+                        attachments, lyricAnchors, cancellationToken, pitchDisplayMode);
+                    Interlocked.Increment(ref _skylineSystemMeasureCount);
+                }
+            }
+
+            _cachedSkylineSource = cacheSource;
+            _cachedSkylineDisplayScore = score;
+            _cachedSkylineLayout = layout;
+            _cachedSkylinePartIndices = partIndices;
+            _cachedSkylinePitchMode = pitchDisplayMode;
+            _cachedSkylineExtents = extents;
+            return extents;
+        }
+    }
+
+    private StaffSkyline[] MeasureSystemExtents(Score score, ScoreLayoutResult layout,
+        int systemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer,
+        double leftMargin, Dictionary<EventId, List<Attachment>> attachments,
+        ImmutableArray<LyricAnchor> lyricAnchors, CancellationToken cancellationToken,
+        PitchDisplayMode pitchDisplayMode)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
+        SystemState scratch = new(attachments, lyricAnchors);
+        DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch,
+            leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty, pitchDisplayMode);
+        double[] top = new double[staffCount];
+        double[] bottom = new double[staffCount];
+        Array.Fill(top, 0.5);
+        Array.Fill(bottom, 0.5);
+        foreach (DrawingPrimitive primitive in drawn)
+        {
+            // Staff lines, headers and barlines belong to the staves themselves.
+            if (primitive.ElementId.Value == Guid.Empty || primitive is DisplayLists.Path)
+            {
+                continue;
+            }
+
+            if (!scratch.StaffByPrimitive.TryGetValue(primitive, out int nearest))
+            {
+                continue;
+            }
+
+            top[nearest] = Math.Max(top[nearest], placement.StaffTops[nearest] - primitive.Bounds.Y);
+            bottom[nearest] = Math.Max(bottom[nearest], primitive.Bounds.Y + primitive.Bounds.Height -
+                (placement.StaffTops[nearest] + 4));
         }
 
-        return extents;
+        StaffSkyline[] extent = new StaffSkyline[staffCount];
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            extent[staffIndex] = new StaffSkyline(top[staffIndex], bottom[staffIndex]);
+        }
+
+        return extent;
+    }
+
+    private StaffSkyline MeasureStaffExtents(Score score, ScoreLayoutResult layout,
+        int systemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer,
+        double leftMargin, Dictionary<EventId, List<Attachment>> attachments,
+        ImmutableArray<LyricAnchor> lyricAnchors, CancellationToken cancellationToken,
+        PitchDisplayMode pitchDisplayMode, int staffIndex)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
+        SystemState scratch = new(attachments, lyricAnchors);
+        DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch,
+            leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty,
+            pitchDisplayMode, staffIndex);
+        double top = 0.5;
+        double bottom = 0.5;
+        foreach (DrawingPrimitive primitive in drawn)
+        {
+            if (primitive.ElementId.Value == Guid.Empty || primitive is DisplayLists.Path ||
+                !scratch.StaffByPrimitive.TryGetValue(primitive, out int nearest) ||
+                nearest != staffIndex)
+            {
+                continue;
+            }
+
+            top = Math.Max(top, placement.StaffTops[staffIndex] - primitive.Bounds.Y);
+            bottom = Math.Max(bottom, primitive.Bounds.Y + primitive.Bounds.Height -
+                (placement.StaffTops[staffIndex] + 4));
+        }
+
+        return new StaffSkyline(top, bottom);
+    }
+
+    private static bool LayoutsEquivalent(ScoreLayoutResult current, ScoreLayoutResult? cached)
+    {
+        if (cached is null || current.Systems.Length != cached.Systems.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < current.Systems.Length; index++)
+        {
+            if (!SystemsEquivalent(current.Systems[index], cached.Systems[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryFindEquivalentSystem(SystemLine system,
+        ImmutableArray<SystemLine> cachedSystems, out int cachedSystemIndex)
+    {
+        for (int index = 0; index < cachedSystems.Length; index++)
+        {
+            if (SystemsEquivalent(system, cachedSystems[index]))
+            {
+                cachedSystemIndex = index;
+                return true;
+            }
+        }
+
+        cachedSystemIndex = -1;
+        return false;
+    }
+
+    private static bool SystemsEquivalent(SystemLine left, SystemLine right)
+    {
+        if (left.Range != right.Range || left.NaturalWidth != right.NaturalWidth ||
+            left.PlacedWidth != right.PlacedWidth || left.IsLast != right.IsLast ||
+            left.MeasureWidths.Length != right.MeasureWidths.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < left.MeasureWidths.Length; index++)
+        {
+            if (left.MeasureWidths[index] != right.MeasureWidths[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SystemContentEquivalent(Score current, Score cached,
+        SystemLineMeasureRange range)
+    {
+        if (range.StartIndex < 0 || range.Count < 0 ||
+            range.StartIndex + range.Count > current.Measures.Length ||
+            range.StartIndex + range.Count > cached.Measures.Length ||
+            current.Measures.Length != cached.Measures.Length)
+        {
+            return false;
+        }
+
+        int staffCount = CountStaves(current);
+        if (!SystemMeasuresEquivalent(current, cached, range))
+        {
+            return false;
+        }
+
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            if (!StaffContentEquivalent(current, cached, range, staffIndex))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SystemMeasuresEquivalent(Score current, Score cached,
+        SystemLineMeasureRange range)
+    {
+        if (range.StartIndex < 0 || range.Count < 0 ||
+            range.StartIndex + range.Count > current.Measures.Length ||
+            range.StartIndex + range.Count > cached.Measures.Length ||
+            current.Measures.Length != cached.Measures.Length)
+        {
+            return false;
+        }
+
+        for (int measureIndex = range.StartIndex; measureIndex < range.StartIndex + range.Count;
+            measureIndex++)
+        {
+            if (current.Measures[measureIndex] != cached.Measures[measureIndex])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool StaffContentEquivalent(Score current, Score cached,
+        SystemLineMeasureRange range, int staffIndex)
+    {
+        if (range.StartIndex < 0 || range.Count < 0 ||
+            range.StartIndex + range.Count > current.Measures.Length ||
+            range.StartIndex + range.Count > cached.Measures.Length ||
+            current.Measures.Length != cached.Measures.Length)
+        {
+            return false;
+        }
+
+        for (int measureIndex = range.StartIndex; measureIndex < range.StartIndex + range.Count;
+            measureIndex++)
+        {
+            StaffMeasureKey key = new(staffIndex, measureIndex);
+            bool hasCurrent = current.Content.TryGetValue(key, out StaffMeasure? currentContent);
+            bool hasCached = cached.Content.TryGetValue(key, out StaffMeasure? cachedContent);
+            if (hasCurrent != hasCached ||
+                (hasCurrent && !ReferenceEquals(currentContent, cachedContent)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool HasCrossStaffSpanners(Score score)
+    {
+        if (score.SpannerList.IsEmpty)
+        {
+            _cachedSpannerDefinitions = score.SpannerList;
+            _cachedSpannerLocations = [];
+            _cachedSpannerEndpointCount = 0;
+            _cachedHasCrossStaffSpanners = false;
+            return false;
+        }
+
+        if (_cachedSpannerLocations is not null &&
+            _cachedSpannerDefinitions == score.SpannerList &&
+            _cachedSpannerLocations.Count == _cachedSpannerEndpointCount &&
+            CachedSpannerLocationsAreValid(score, _cachedSpannerLocations))
+        {
+            return _cachedHasCrossStaffSpanners;
+        }
+
+        HashSet<EventId> targets = [];
+        foreach (Spanner spanner in score.SpannerList)
+        {
+            targets.Add(spanner.Start);
+            targets.Add(spanner.End);
+        }
+
+        Dictionary<EventId, SpannerLocation> eventLocations = new(targets.Count);
+        foreach ((StaffMeasureKey key, StaffMeasure measure) in score.Content)
+        {
+            foreach (Voice voice in measure.Voices)
+            {
+                AddEventLocations(voice.Events, key, voice.Number, targets, eventLocations);
+            }
+        }
+
+        bool hasCrossStaffSpanners = false;
+        foreach (Spanner spanner in score.SpannerList)
+        {
+            if (!eventLocations.TryGetValue(spanner.Start, out SpannerLocation start) ||
+                !eventLocations.TryGetValue(spanner.End, out SpannerLocation end) ||
+                start.Key.StaffIndex != end.Key.StaffIndex)
+            {
+                hasCrossStaffSpanners = true;
+                break;
+            }
+        }
+
+        _cachedSpannerDefinitions = score.SpannerList;
+        _cachedSpannerLocations = eventLocations;
+        _cachedSpannerEndpointCount = targets.Count;
+        _cachedHasCrossStaffSpanners = hasCrossStaffSpanners;
+        return hasCrossStaffSpanners;
+    }
+
+    private static bool CachedSpannerLocationsAreValid(Score score,
+        Dictionary<EventId, SpannerLocation> locations)
+    {
+        foreach ((EventId eventId, SpannerLocation location) in locations)
+        {
+            if (!score.Content.TryGetValue(location.Key, out StaffMeasure? staffMeasure))
+            {
+                return false;
+            }
+
+            bool found = false;
+            foreach (Voice voice in staffMeasure.Voices)
+            {
+                if (voice.Number == location.VoiceNumber && ContainsEvent(voice.Events, eventId))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void AddEventLocations(ImmutableArray<MusicEvent> events, StaffMeasureKey key,
+        int voiceNumber, HashSet<EventId> targets, Dictionary<EventId, SpannerLocation> locations)
+    {
+        foreach (MusicEvent musicEvent in events)
+        {
+            if (targets.Contains(musicEvent.Id))
+            {
+                locations[musicEvent.Id] = new SpannerLocation(key, voiceNumber);
+            }
+
+            if (musicEvent is TupletGroup group)
+            {
+                AddEventLocations(group.Children, key, voiceNumber, targets, locations);
+            }
+        }
+    }
+
+    private static bool PartIndicesEqual(ImmutableArray<int> left, ImmutableArray<int> right)
+    {
+        if (left.IsDefaultOrEmpty || right.IsDefaultOrEmpty)
+        {
+            return left.IsDefaultOrEmpty && right.IsDefaultOrEmpty;
+        }
+
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < left.Length; index++)
+        {
+            if (left[index] != right[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static VerticalLayoutResult BuildVerticalLayout(ImmutableArray<SystemLine> systems,
@@ -1835,4 +2388,60 @@ public sealed class ScorePageComposer
 
     private readonly record struct MultiMeasureRestSegment(int StartLocalMeasure,
         int MeasureCount, int TotalMeasureCount, bool ShowCount);
+
+    private readonly record struct HeaderCacheKey(string ClefGlyph, KeySignature KeySignature,
+        TimeSignature TimeSignature);
+
+    private readonly record struct SpannerLocation(StaffMeasureKey Key, int VoiceNumber);
+
+    private sealed class AnnotationObstacleIndex
+    {
+        private const double BucketWidth = 4;
+        private const double Clearance = 0.15;
+        private readonly Dictionary<int, List<DisplayBox>> _buckets = [];
+
+        public void Add(DisplayBox box)
+        {
+            int first = BucketAt(box.X);
+            int last = BucketAt(box.X + box.Width);
+            for (int bucket = first; bucket <= last; bucket++)
+            {
+                if (!_buckets.TryGetValue(bucket, out List<DisplayBox>? items))
+                {
+                    items = [];
+                    _buckets.Add(bucket, items);
+                }
+
+                items.Add(box);
+            }
+        }
+
+        public bool Collides(DisplayBox box, double shift)
+        {
+            int first = BucketAt(box.X - Clearance);
+            int last = BucketAt(box.X + box.Width + Clearance);
+            for (int bucket = first; bucket <= last; bucket++)
+            {
+                if (!_buckets.TryGetValue(bucket, out List<DisplayBox>? items))
+                {
+                    continue;
+                }
+
+                foreach (DisplayBox other in items)
+                {
+                    if (box.X < other.X + other.Width + Clearance &&
+                        other.X < box.X + box.Width + Clearance &&
+                        box.Y + shift < other.Y + other.Height + Clearance &&
+                        other.Y < box.Y + shift + box.Height + Clearance)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static int BucketAt(double x) => (int)Math.Floor(x / BucketWidth);
+    }
 }

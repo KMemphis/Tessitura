@@ -21,7 +21,7 @@ public class LayoutBenchmarks
     {
         _metadata = ReferenceScoreFactory.LoadMetadata();
         _style = Style.CreateDefault(_metadata);
-        _score = ReferenceScoreFactory.Create();
+        _score = ReferenceScoreFactory.Create(advancedNotation: true);
         _sharpScore = ReferenceScoreFactory.WithAccidental(_score, sharp: true);
         _naturalScore = _score;
         _incrementalLayouter = new IncrementalScoreLayouter(_metadata);

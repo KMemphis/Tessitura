@@ -97,7 +97,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F4.12 · Transposición.** Partitura en concierto o transpuesta e instrumentos transpositores. *Hecho cuando:* un clarinete en Si bemol muestra la altura escrita correcta en ambas vistas.
 - [x] **F4.13 · Vistas continua y de parte.** Vista de galera sin saltos de página y selector de vista. *Hecho cuando:* cambiar de vista conserva la selección.
 - [x] **F4.14 · MIDI en tiempo real.** Grabación con metrónomo y cuantización posterior. *Hecho cuando:* una melodía tocada a tempo queda cuantizada a corcheas sin errores.
-- [ ] **F4.15 · Rendimiento orquestal.** Perfilado y optimización con la partitura de referencia completa en notación avanzada. *Hecho cuando:* se cumplen todos los presupuestos de la definición.
+- [x] **F4.15 · Rendimiento orquestal.** Perfilado y optimización con la partitura de referencia completa en notación avanzada. *Hecho cuando:* se cumplen todos los presupuestos de la definición.
 
 **Puerta F4:** la partitura orquestal de referencia se edita a 60 fps, con partes vinculadas y todos los presupuestos de rendimiento cumplidos.
 

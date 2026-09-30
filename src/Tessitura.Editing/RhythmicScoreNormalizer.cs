@@ -540,10 +540,75 @@ internal static class RhythmicScoreNormalizer
             ImmutableArray<Voice> voices = voiceIndex >= 0
                 ? staffMeasure.Voices.SetItem(voiceIndex, normalizedVoice)
                 : staffMeasure.Voices.Add(normalizedVoice);
+            if (voiceIndex >= 0 && EventsEquivalent(staffMeasure.Voices[voiceIndex].Events,
+                normalizedVoice.Events))
+            {
+                continue;
+            }
+
             content[key] = staffMeasure with { Voices = voices };
         }
 
         return score with { Content = content.ToImmutable() };
+    }
+
+    private static bool EventsEquivalent(ImmutableArray<MusicEvent> left, ImmutableArray<MusicEvent> right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < left.Length; index++)
+        {
+            if (!EventsEquivalent(left[index], right[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool EventsEquivalent(MusicEvent left, MusicEvent right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left.Id != right.Id || left.Onset != right.Onset || left.Duration != right.Duration)
+        {
+            return false;
+        }
+
+        return left switch
+        {
+            Rest when right is Rest => true,
+            Chord leftChord when right is Chord rightChord => ChordsEquivalent(leftChord, rightChord),
+            TupletGroup leftGroup when right is TupletGroup rightGroup =>
+                leftGroup.Actual == rightGroup.Actual && leftGroup.Normal == rightGroup.Normal &&
+                EventsEquivalent(leftGroup.Children, rightGroup.Children),
+            _ => false,
+        };
+    }
+
+    private static bool ChordsEquivalent(Chord left, Chord right)
+    {
+        if (left.Stem != right.Stem || left.Notes.Length != right.Notes.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < left.Notes.Length; index++)
+        {
+            if (left.Notes[index] != right.Notes[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int FindVoiceIndex(StaffMeasure staffMeasure, int voiceNumber)

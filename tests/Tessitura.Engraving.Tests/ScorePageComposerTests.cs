@@ -149,6 +149,51 @@ public sealed class ScorePageComposerTests
             .Count(primitive => primitive.ElementId.Value == Guid.Empty) >= layout.Systems.Length * 5);
     }
 
+    [Fact]
+    public void SkylineMeasurementsAreReusedForUnchangedSystemsInANewScoreSnapshot()
+    {
+        SmuflMetadata metadata = LoadMetadata();
+        Style style = Style.CreateDefault(metadata);
+        ScorePageComposer composer = new(metadata, style);
+        Chord first = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+            new Duration(NoteValue.Whole, 0), [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Chord second = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+            new Duration(NoteValue.Whole, 0), [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Score score = new(new ScoreMetadata("Cache", ""),
+            [new Instrument("Piano", [new Staff("Treble")])],
+            [new Measure(1, new TimeSignature(4, 4)), new Measure(2, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [first])]))
+                .Add(new StaffMeasureKey(0, 1), new StaffMeasure([new Voice(1, [second])])),
+            [new DynamicAttachment(first.Id, DynamicLevel.Mf), new DynamicAttachment(second.Id, DynamicLevel.Mp)]);
+        IncrementalScoreLayouter layouter = new(metadata);
+        ScoreLayoutResult measured = layouter.Layout(score, style, composer.GetAvailableWidth(score));
+        ImmutableArray<SystemLine>.Builder systems = ImmutableArray.CreateBuilder<SystemLine>(2);
+        for (int measureIndex = 0; measureIndex < 2; measureIndex++)
+        {
+            double width = measured.MeasureWidths[measureIndex].IdealWidth;
+            systems.Add(new SystemLine(new SystemLineMeasureRange(measureIndex, 1), width, width,
+                [width], measureIndex == 1));
+        }
+
+        ScoreLayoutResult layout = measured with { Systems = systems.MoveToImmutable() };
+
+        _ = composer.Compose(score, layout, 0);
+        Assert.Equal(2, composer.SkylineSystemMeasureCount);
+        _ = composer.Compose(score, layout, 0);
+        Assert.Equal(2, composer.SkylineSystemMeasureCount);
+
+        Chord changedFirst = first with { Notes = [new Note(new Pitch(Step.D, 0, 4))] };
+        Score changedScore = score with
+        {
+            Content = score.Content.SetItem(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1, [changedFirst])])),
+        };
+        _ = composer.Compose(changedScore, layout, 0);
+
+        Assert.Equal(3, composer.SkylineSystemMeasureCount);
+    }
+
     private static Score CreateScore(EventId eventId, EventId restId)
     {
         Measure measure = new(1, new TimeSignature(4, 4));

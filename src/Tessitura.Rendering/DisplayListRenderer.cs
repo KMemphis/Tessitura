@@ -13,6 +13,7 @@ public sealed class DisplayListRenderer : IDisposable
     private readonly SKTypeface _textTypeface;
     private readonly SKShaper _textShaper;
     private readonly bool _ownsTextTypeface;
+    private readonly Dictionary<int, string> _glyphTextByCodepoint = [];
 
     /// <summary>Loads the SMuFL font used by glyph primitives.</summary>
     /// <param name="musicFontPath">The SMuFL OpenType font file.</param>
@@ -57,7 +58,7 @@ public sealed class DisplayListRenderer : IDisposable
             {
                 case Glyph glyph:
                     musicFont.Size = (float)(glyph.Size * staffSpace);
-                    string character = char.ConvertFromUtf32(glyph.Codepoint);
+                    string character = GetGlyphText(glyph.Codepoint);
                     canvas.DrawText(character,
                         (float)(glyph.Origin.X * staffSpace),
                         (float)(glyph.Origin.Y * staffSpace),
@@ -159,5 +160,17 @@ public sealed class DisplayListRenderer : IDisposable
         }
 
         return result;
+    }
+
+    private string GetGlyphText(int codepoint)
+    {
+        if (_glyphTextByCodepoint.TryGetValue(codepoint, out string? text))
+        {
+            return text;
+        }
+
+        text = char.ConvertFromUtf32(codepoint);
+        _glyphTextByCodepoint.Add(codepoint, text);
+        return text;
     }
 }

@@ -398,7 +398,6 @@ public sealed class ScoreUpdateCoordinator : IDisposable
             : score;
         int changedMeasure = _lastLayoutScore is null ? -1 :
             FindSingleChangedMeasure(_lastLayoutScore, displayScore, cancellationToken);
-        double availableWidth = _composer.GetAvailableWidth(displayScore);
         ScoreLayoutResult layout;
         if (_layouter.Current is not null && changedMeasure >= 0)
         {
@@ -406,6 +405,7 @@ public sealed class ScoreUpdateCoordinator : IDisposable
         }
         else
         {
+            double availableWidth = _composer.GetAvailableWidth(displayScore);
             layout = _layouter.Layout(score, _style, availableWidth, cancellationToken);
         }
 
