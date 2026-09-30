@@ -47,10 +47,11 @@ public sealed class StaffElementPlacer
     /// <param name="x">The notehead glyph origin.</param>
     /// <param name="staffTop">The top staff-line position.</param>
     /// <param name="clef">The staff clef used to place the written pitch.</param>
+    /// <param name="forcedStem">The stem direction imposed by the voice, or null to choose it from the pitch.</param>
     /// <returns>The notehead, stem, optional accidental and dots, and ledger lines.</returns>
     public ImmutableArray<DrawingPrimitive> PlaceNote(EventId id, Pitch pitch,
         Duration duration, AccidentalMark accidental, double x, double staffTop,
-        Clef clef = Clef.Treble)
+        Clef clef = Clef.Treble, StemDirection? forcedStem = null)
     {
         ElementId elementId = new(id.Value);
         int staffPosition = StaffPitchPosition.Get(pitch, clef);
@@ -99,7 +100,9 @@ public sealed class StaffElementPlacer
 
         if (duration.Value != NoteValue.Whole)
         {
-            StemDirection direction = BeamGrouper.ChooseStemDirection(staffPosition - 4);
+            StemDirection direction = forcedStem is StemDirection.Up or StemDirection.Down
+                ? forcedStem.Value
+                : BeamGrouper.ChooseStemDirection(staffPosition - 4);
             string anchorName = direction == StemDirection.Up ? "stemUpSE" : "stemDownNW";
             Smufl.SmuflPoint anchor = _metadata.GetAnchor(headName, anchorName);
             double stemX = x + anchor.X;
@@ -131,9 +134,10 @@ public sealed class StaffElementPlacer
     /// <param name="duration">The notated rest duration.</param>
     /// <param name="x">The rest glyph origin.</param>
     /// <param name="staffTop">The top staff-line position.</param>
+    /// <param name="verticalOffset">The shift in staff spaces, negative upward, that keeps the rests of different voices apart.</param>
     /// <returns>The rest and optional dot primitives.</returns>
     public ImmutableArray<DrawingPrimitive> PlaceRest(EventId id, Duration duration,
-        double x, double staffTop)
+        double x, double staffTop, double verticalOffset = 0)
     {
         ElementId elementId = new(id.Value);
         string name = duration.Value switch
@@ -150,12 +154,12 @@ public sealed class StaffElementPlacer
         };
         // Behind Bars, Ground Rules > Rest symbols: whole and half rests sit
         // at different staff-line levels; the remaining rests use the centre.
-        double y = staffTop + (duration.Value == NoteValue.Whole ? 1 : 2);
+        double y = staffTop + (duration.Value == NoteValue.Whole ? 1 : 2) + verticalOffset;
         Glyph rest = MakeGlyph(elementId, name, x, y);
         ImmutableArray<DrawingPrimitive>.Builder result = ImmutableArray.CreateBuilder<DrawingPrimitive>();
         result.Add(rest);
         AddDots(result, elementId, rest.Bounds.X + rest.Bounds.Width,
-            staffTop + 1.5, duration.Dots);
+            staffTop + 1.5 + verticalOffset, duration.Dots);
         return result.ToImmutable();
     }
 

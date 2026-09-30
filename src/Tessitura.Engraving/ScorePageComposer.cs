@@ -276,8 +276,15 @@ public sealed class ScorePageComposer
     {
         AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
             out (int Voice, int Event, int Note)[] order);
+        bool manyVoices = staffMeasure.Voices.Length > 1;
+        double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
         foreach (Voice voice in staffMeasure.Voices)
         {
+            // Behind Bars, Multiple Voices: odd voices take up-stems, even voices down-stems.
+            StemDirection? voiceStem = manyVoices
+                ? (voice.Number % 2 == 1 ? StemDirection.Up : StemDirection.Down)
+                : null;
+            double restShift = !manyVoices ? 0 : voice.Number switch { 1 => -2, 2 => 2, 3 => -4, _ => 4 };
             cancellationToken.ThrowIfCancellationRequested();
             for (int eventIndex = 0; eventIndex < voice.Events.Length; eventIndex++)
             {
@@ -289,7 +296,7 @@ public sealed class ScorePageComposer
                 double x = measureStartX + measureWidth * onset / barLength;
                 if (musicEvent is Rest rest)
                 {
-                    primitives.AddRange(placer.PlaceRest(rest.Id, rest.Duration, x, staffTop));
+                    primitives.AddRange(placer.PlaceRest(rest.Id, rest.Duration, x, staffTop, restShift));
                 }
                 else if (musicEvent is Chord chord)
                 {
@@ -308,13 +315,59 @@ public sealed class ScorePageComposer
                         }
 
                         double chordOffset = chord.Notes.Length <= 1 ? 0 : noteIndex * 0.75;
+                        if (manyVoices && CollidesWithLowerVoice(staffMeasure, voice, chord, note, clef))
+                        {
+                            chordOffset += headWidth; // Behind Bars, Multiple Voices: displace the clashing head
+                        }
+
                         primitives.AddRange(placer.PlaceNote(chord.Id, note.Pitch,
-                            chord.Duration, accidental, x + chordOffset, staffTop, clef));
+                            chord.Duration, accidental, x + chordOffset, staffTop, clef, voiceStem));
                     }
                 }
             }
         }
     }
+
+    // A head of a higher-numbered voice clashes when a lower voice has a head within a step at the same
+    // onset; a unison of equal note values shares one head instead.
+    private static bool CollidesWithLowerVoice(StaffMeasure measure, Voice voice, Chord chord, Note note, Clef clef)
+    {
+        int position = StaffPitchPosition.Get(note.Pitch, clef);
+        foreach (Voice other in measure.Voices)
+        {
+            if (other.Number >= voice.Number)
+            {
+                continue;
+            }
+
+            foreach (MusicEvent musicEvent in other.Events)
+            {
+                if (musicEvent is not Chord otherChord || musicEvent.Onset != chord.Onset)
+                {
+                    continue;
+                }
+
+                foreach (Note otherNote in otherChord.Notes)
+                {
+                    int distance = Math.Abs(StaffPitchPosition.Get(otherNote.Pitch, clef) - position);
+                    bool sameHead = distance == 0 && HeadKind(otherChord.Duration) == HeadKind(chord.Duration);
+                    if (distance <= 1 && !sameHead)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int HeadKind(Duration duration) => duration.Value switch
+    {
+        NoteValue.Whole => 0,
+        NoteValue.Half => 1,
+        _ => 2,
+    };
 
     private static AccidentalMark[] ResolveAccidentals(Measure measure, int measureIndex,
         StaffMeasure staffMeasure, out (int Voice, int Event, int Note)[] order)
