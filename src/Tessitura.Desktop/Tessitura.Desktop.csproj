@@ -6,6 +6,12 @@
     <PackageReference Include="Avalonia.Desktop" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="../../assets/fonts/Bravura.otf" Link="assets/fonts/Bravura.otf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/fonts/Bravura.json" Link="assets/fonts/Bravura.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/fonts/smufl_glyph_names.json" Link="assets/fonts/smufl_glyph_names.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/fonts/OFL.txt" Link="assets/fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Tessitura.App/Tessitura.App.csproj" />
   </ItemGroup>
 </Project>

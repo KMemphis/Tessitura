@@ -12,12 +12,14 @@ namespace Tessitura.App;
 /// <summary>Displays a zoomable and pannable score page.</summary>
 public sealed class ScoreCanvas : Control
 {
+    private readonly MusicPreviewRenderer? _musicPreview;
     private Point? _dragPointer;
     private bool _userAdjusted;
 
     /// <summary>Creates a canvas that initially fits the page in its view.</summary>
-    public ScoreCanvas()
+    public ScoreCanvas(MusicPreviewRenderer? musicPreview = null)
     {
+        _musicPreview = musicPreview;
         SizeChanged += (_, args) =>
         {
             if (_userAdjusted || args.NewSize.Width <= 80 || args.NewSize.Height <= 80)
@@ -73,7 +75,7 @@ public sealed class ScoreCanvas : Control
     /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
-        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset));
+        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _musicPreview));
     }
 
     /// <inheritdoc />
@@ -125,7 +127,11 @@ public sealed class ScoreCanvas : Control
         }
     }
 
-    private sealed class PageDrawOperation(Rect bounds, double zoom, Vector panOffset) : ICustomDrawOperation
+    private sealed class PageDrawOperation(
+        Rect bounds,
+        double zoom,
+        Vector panOffset,
+        MusicPreviewRenderer? musicPreview) : ICustomDrawOperation
     {
         public Rect Bounds { get; } = bounds;
 
@@ -139,7 +145,7 @@ public sealed class ScoreCanvas : Control
 
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
-            PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X, panOffset.Y);
+            PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X, panOffset.Y, musicPreview);
         }
 
         public bool HitTest(Point point) => Bounds.Contains(point);

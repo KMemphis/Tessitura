@@ -24,3 +24,11 @@ jobs:
         run: dotnet build Tessitura.sln --configuration Release --nologo
       - name: Test
         run: dotnet test Tessitura.sln --configuration Release --no-build --nologo
+        env:
+          TESSITURA_CAPTURE_DIR: ${{ github.workspace }}/captures
+      - name: Upload music preview
+        uses: actions/upload-artifact@v6
+        with:
+          name: music-preview-${{ matrix.os }}
+          path: captures/music-preview.png
+          if-no-files-found: error

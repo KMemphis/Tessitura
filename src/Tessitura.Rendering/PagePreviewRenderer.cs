@@ -6,7 +6,14 @@ namespace Tessitura.Rendering;
 public static class PagePreviewRenderer
 {
     /// <summary>Draws the workspace, A4 page, and page shadow.</summary>
-    public static void Draw(SKCanvas canvas, double width, double height, double zoom, double panX, double panY)
+    public static void Draw(
+        SKCanvas canvas,
+        double width,
+        double height,
+        double zoom,
+        double panX,
+        double panY,
+        MusicPreviewRenderer? music = null)
     {
         using SKPaint background = new() { Color = new SKColor(47, 52, 61) };
         using SKPaint shadow = new() { Color = new SKColor(0, 0, 0, 75), IsAntialias = true };
@@ -18,6 +25,7 @@ public static class PagePreviewRenderer
         canvas.Scale((float)zoom);
         canvas.DrawRect(87, 47, 595, 842, shadow);
         canvas.DrawRect(80, 40, 595, 842, page);
+        music?.Draw(canvas);
         canvas.Restore();
     }
 }
