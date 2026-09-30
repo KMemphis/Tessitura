@@ -138,3 +138,10 @@
 - Se añadió un constructor de segmentos en Engraving que lee una medida de `Score`, agrupa todos los eventos por inicio exacto `Fraction` y conserva `EventId`, pentagrama y voz en orden.
 - Dos pruebas nuevas verifican un piano con negras en la mano derecha y blancas en la izquierda: ambas coinciden en los instantes 0 y 1/2. Una segunda voz en el pentagrama superior comparte esas mismas columnas.
 - `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 77 pruebas sin fallos ni omisiones. Siguiente tarea: F1.8, espaciado horizontal y cabecera de sistema.
+
+## 2026-09-29 · F1.8 Espaciado horizontal
+
+- Se implementó la fórmula logarítmica de la definición con α = 0,6 y límites anticolisión basados en los salientes izquierdo y derecho de cada columna. Las duraciones musicales permanecen en `Fraction`; solo el ancho geométrico se calcula en `double`.
+- La cabecera reserva posiciones horizontales para clave, alteraciones de la armadura y cifras del compás, con anchos derivados de las cajas SMuFL. La colocación vertical de esos símbolos corresponde a F1.9.
+- Tres pruebas nuevas verifican que la blanca ocupa 1,6 veces el ancho ideal de la negra, que una alteración medida con las cajas reales de Bravura no toca la nota anterior y que los elementos de cabecera no se superponen horizontalmente.
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 80 pruebas sin fallos ni omisiones. Siguiente tarea: F1.9, colocación de notas, silencios y símbolos en el pentagrama.
