@@ -114,3 +114,9 @@
 - En este Mac la captura aprobada difiere de un renderizado nuevo en 168 de 800.000 píxeles con igualdad estricta y en 90 píxeles con tolerancia de 4 niveles por canal. Se fijó un límite de 100 píxeles para esa tolerancia. Cuando una comparación excede el límite, conserva el candidato y la diferencia; CI los adjunta.
 - Una prueba cambia `noteheadBlack` por otro glifo, exige que falle y se genere la diferencia, aprueba una copia temporal y confirma que entonces pasa. La aprobación temporal no toca las referencias del repositorio.
 - `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 40 pruebas sin fallos ni omisiones. Siguiente tarea: F1.4, estilo y valores de grabado.
+
+## 2026-09-29 · F1.4 Estilo de grabado
+
+- Se creó `Style` inmutable en Engraving. Los grosores de pentagrama, plica, barra y línea adicional, la separación de barras y la extensión de líneas adicionales proceden de `engravingDefaults` de Bravura; cada propiedad cita su clave.
+- La plica normal de 3,5 espacios sigue [*Behind Bars*, «Ground Rules > Stems»](https://www.behindbarsnotation.co.uk/contents/sample_pages.pdf). Los mínimos configurables de Tessitura, 0,25 espacios entre alteración y nota y 0,5 espacios entre columnas, se inspiran respectivamente en las secciones «Accidentals > Placing» y «Ground Rules > Spacing symbols» del [índice del libro](https://behindbarsnotation.co.uk/contents/toc.pdf); esas dos cifras son elecciones del producto, no valores atribuidos al libro.
+- Dos pruebas nuevas comprueban los valores frente a los metadatos de Bravura y la ida y vuelta JSON con modificaciones. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 42 pruebas sin fallos ni omisiones. Siguiente tarea: F1.5, resolución de alteraciones.
