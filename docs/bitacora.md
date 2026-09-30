@@ -162,3 +162,8 @@
 
 - Se añadió `SystemBreaker` con programación dinámica de badness cúbica para elegir saltos entre compases, basada en el enfoque Knuth-Plass descrito en `docs/definicion-proyecto.md`, «Motor de grabado > Etapas > Saltos de sistema». Los sistemas no finales conservan al menos el 80 % del ancho ideal y el sobrante se reparte según la elasticidad de cada compás; la compresión respeta anchos mínimos y tiene un límite de producto del 12 %.
 - Seis pruebas comprueban el salto óptimo, el límite del 80 %, el reparto proporcional, la compresión dentro de mínimos y el rechazo de medidas imposibles o de compresión excesiva. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 102 pruebas sin fallos ni omisiones. [CI #36662230335](https://github.com/KMemphis/Tessitura/actions/runs/36662230335) pasó en Windows, macOS y Ubuntu. Siguiente tarea: F1.12, páginas y espaciado vertical.
+
+## 2026-09-29 · F1.12 Páginas y espaciado vertical
+
+- Se añadió `VerticalPageLayouter` para ubicar sistemas en páginas y calcular las posiciones de cada pentagrama a partir de su skyline básico. La separación toma el mayor valor entre la distancia mínima y la suma de los salientes vecinos más la holgura; si el sistema no cabe en una página, se informa el error en vez de solapar contenido.
+- Cuatro pruebas verifican separación por skyline, paginación de una partitura de diez páginas sin solapes, empaquetado de sistemas cuando caben y rechazo de un sistema demasiado alto. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 106 pruebas sin fallos ni omisiones. [CI #36662666716](https://github.com/KMemphis/Tessitura/actions/runs/36662666716) pasó en Windows, macOS y Ubuntu. Siguiente tarea: F1.13, textos de página.

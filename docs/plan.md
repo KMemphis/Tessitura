@@ -39,7 +39,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F1.9 · Colocación en el pentagrama.** Cabezas, plicas, alteraciones, puntillos, silencios y líneas adicionales. *Hecho cuando:* imágenes de referencia de una escala de cuatro octavas y de todos los silencios.
 - [x] **F1.10 · Barras de corchea.** Inclinación limitada, grosor de SMuFL, barras múltiples y parciales. *Hecho cuando:* imágenes de referencia de grupos ascendentes, descendentes y mixtos.
 - [x] **F1.11 · Saltos de sistema y justificación.** Programación dinámica tipo Knuth-Plass y reparto del sobrante por elasticidad. *Hecho cuando:* ningún sistema excepto el último queda por debajo del 80 % del ancho sin estirar en exceso.
-- [ ] **F1.12 · Páginas y espaciado vertical.** Saltos de página y separación de pentagramas con skylines básicos. *Hecho cuando:* una partitura de 10 páginas no tiene solapes entre pentagramas.
+- [x] **F1.12 · Páginas y espaciado vertical.** Saltos de página y separación de pentagramas con skylines básicos. *Hecho cuando:* una partitura de 10 páginas no tiene solapes entre pentagramas.
 - [ ] **F1.13 · Textos de página.** Título, compositor y números de compás con HarfBuzzSharp. *Hecho cuando:* imágenes de referencia de la primera página.
 - [ ] **F1.14 · Exportación PDF.** `SKDocument.CreatePdf` con fuentes incrustadas. *Hecho cuando:* el PDF abre en tres visores y coincide con la pantalla.
 - [ ] **F1.15 · Maquetación incremental y rendimiento.** Caché de anchos por compás, reflujo limitado, cancelación y un generador de la partitura de referencia (30 pentagramas × 300 compases). *Hecho cuando:* BenchmarkDotNet mide maquetación completa por debajo de 1,5 s y un cambio de una nota por debajo de 10 ms.
