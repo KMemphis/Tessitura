@@ -231,3 +231,11 @@
 - La ventana de Tessitura se abrió y se capturó por identificador de su proceso (sin captura de pantalla completa); tras enviar la secuencia de teclado, el cursor avanzó en la ventana. La partitura visible sigue siendo el ejemplo provisional hasta conectar la maquetación y el repintado en F2.6.
 - `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 144 pruebas, sin fallos ni omisiones.
 - Siguiente tarea: F2.5, detección de clics y selección.
+
+## 2026-09-30 · F2.5 Detección de clics y selección
+
+- Se añadió `PageSpatialIndex` con una rejilla uniforme de las cajas de cada primitiva. Las consultas eligen el glifo más cercano dentro de la tolerancia, dan prioridad a glifos sobre líneas y devuelven los límites unidos de los elementos para resaltarlos.
+- `ScoreCanvas` transforma los clics de pantalla a espacios de pentagrama y los pasa al controlador: clic para seleccionar un elemento, `Shift+clic` para ampliar el rectángulo musical entre pentagramas e instantes `Fraction`, y `Ctrl+clic` para alternar elementos en una lista. El resaltado se dibuja en una operación superpuesta.
+- Siete pruebas nuevas cubren prioridad y cercanía de impactos, tolerancia, límites agregados, selección de una nota, rango entre dos pentagramas y lista por elementos. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 151 pruebas, sin fallos ni omisiones.
+- El lienzo acepta y prepara el índice de una página maquetada; el ejemplo que muestra la ventana aún es estático y se conectará al índice y al ciclo de repintado en F2.6.
+- Siguiente tarea: F2.6, ciclo de actualización.

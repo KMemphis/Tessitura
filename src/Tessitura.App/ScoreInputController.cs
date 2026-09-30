@@ -71,6 +71,9 @@ public sealed class ScoreInputController
     /// <summary>Gets the current immutable score snapshot.</summary>
     public Score CurrentScore => _history.CurrentScore;
 
+    /// <summary>Gets the selection associated with the current score snapshot.</summary>
+    public Selection CurrentSelection => _history.CurrentSelection;
+
     /// <summary>Gets the current input mode.</summary>
     public ScoreInputMode Mode { get; private set; }
 
@@ -183,6 +186,53 @@ public sealed class ScoreInputController
         NotifyStateChanged();
     }
 
+    /// <summary>Selects an event, extends a musical range, or adds it to the selection list.</summary>
+    /// <param name="eventId">The stable score-event identifier.</param>
+    /// <param name="extendRange">Whether to retain the current anchor and extend to the event.</param>
+    /// <param name="additive">Whether to toggle the event in a multi-element selection.</param>
+    public void SelectEvent(EventId eventId, bool extendRange = false, bool additive = false)
+    {
+        EventLocation target = FindEventLocation(eventId);
+        SelectionItem targetItem = MakeSelectionItem(target.Event);
+
+        if (extendRange && !CurrentSelection.Items.IsDefaultOrEmpty)
+        {
+            MusicalSelectionPoint anchor = CurrentSelection.Range?.Anchor ??
+                FindEventLocation(CurrentSelection.Items[0].EventId).Position;
+            SelectionRange range = new(anchor, target.Position);
+            _history.SetSelection(BuildRangeSelection(range));
+        }
+        else if (additive)
+        {
+            ImmutableArray<SelectionItem>.Builder items =
+                ImmutableArray.CreateBuilder<SelectionItem>(CurrentSelection.Items.Length + 1);
+            bool removed = false;
+            foreach (SelectionItem item in CurrentSelection.Items)
+            {
+                if (!removed && item == targetItem)
+                {
+                    removed = true;
+                    continue;
+                }
+
+                items.Add(item);
+            }
+
+            if (!removed)
+            {
+                items.Add(targetItem);
+            }
+
+            _history.SetSelection(new Selection(items.ToImmutable()));
+        }
+        else
+        {
+            _history.SetSelection(new Selection([targetItem]));
+        }
+
+        NotifyStateChanged();
+    }
+
     private void WriteNote(Step step)
     {
         if (Mode != ScoreInputMode.NoteEntry)
@@ -227,6 +277,93 @@ public sealed class ScoreInputController
         }
 
         return closest;
+    }
+
+    private Selection BuildRangeSelection(SelectionRange range)
+    {
+        int firstStaff = Math.Min(range.Anchor.StaffIndex, range.Target.StaffIndex);
+        int lastStaff = Math.Max(range.Anchor.StaffIndex, range.Target.StaffIndex);
+        Fraction firstPosition = range.Anchor.Position < range.Target.Position
+            ? range.Anchor.Position
+            : range.Target.Position;
+        Fraction lastPosition = range.Anchor.Position > range.Target.Position
+            ? range.Anchor.Position
+            : range.Target.Position;
+        ImmutableArray<SelectionItem>.Builder items = ImmutableArray.CreateBuilder<SelectionItem>();
+
+        for (int staffIndex = firstStaff; staffIndex <= lastStaff; staffIndex++)
+        {
+            Fraction measureStart = Fraction.Zero;
+            for (int measureIndex = 0; measureIndex < CurrentScore.Measures.Length; measureIndex++)
+            {
+                Measure measure = CurrentScore.Measures[measureIndex];
+                if (CurrentScore.Content.TryGetValue(new StaffMeasureKey(staffIndex, measureIndex),
+                    out StaffMeasure? staffMeasure))
+                {
+                    foreach (Voice voice in staffMeasure.Voices)
+                    {
+                        foreach (MusicEvent musicEvent in voice.Events)
+                        {
+                            Fraction position = measureStart + musicEvent.Onset;
+                            if (position >= firstPosition && position <= lastPosition)
+                            {
+                                items.Add(MakeSelectionItem(musicEvent));
+                            }
+                        }
+                    }
+                }
+
+                measureStart += measure.TimeSignature.Length;
+            }
+        }
+
+        return new Selection(items.ToImmutable(), range);
+    }
+
+    private EventLocation FindEventLocation(EventId eventId)
+    {
+        for (int staffIndex = 0; staffIndex < CountStaves(CurrentScore); staffIndex++)
+        {
+            Fraction measureStart = Fraction.Zero;
+            for (int measureIndex = 0; measureIndex < CurrentScore.Measures.Length; measureIndex++)
+            {
+                if (CurrentScore.Content.TryGetValue(new StaffMeasureKey(staffIndex, measureIndex),
+                    out StaffMeasure? staffMeasure))
+                {
+                    foreach (Voice voice in staffMeasure.Voices)
+                    {
+                        foreach (MusicEvent musicEvent in voice.Events)
+                        {
+                            if (musicEvent.Id == eventId)
+                            {
+                                return new EventLocation(
+                                    musicEvent,
+                                    new MusicalSelectionPoint(staffIndex, measureStart + musicEvent.Onset));
+                            }
+                        }
+                    }
+                }
+
+                measureStart += CurrentScore.Measures[measureIndex].TimeSignature.Length;
+            }
+        }
+
+        throw new KeyNotFoundException($"Score event '{eventId.Value}' was not found.");
+    }
+
+    private static SelectionItem MakeSelectionItem(MusicEvent musicEvent) =>
+        musicEvent is Chord { Notes.Length: 1 } ? new SelectionItem(musicEvent.Id, 0) :
+        new SelectionItem(musicEvent.Id);
+
+    private static int CountStaves(Score score)
+    {
+        int count = 0;
+        foreach (Instrument instrument in score.Instruments)
+        {
+            count = checked(count + instrument.Staves.Length);
+        }
+
+        return count;
     }
 
     private (int MeasureIndex, Fraction LocalPosition) EnsureCursorMeasure()
@@ -396,4 +533,6 @@ public sealed class ScoreInputController
         EditContext? LastContext,
         Pitch? LastPitch,
         int LastNoteIndex);
+
+    private readonly record struct EventLocation(MusicEvent Event, MusicalSelectionPoint Position);
 }

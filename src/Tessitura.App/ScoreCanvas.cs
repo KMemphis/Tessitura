@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,7 +7,13 @@ using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
 using SkiaSharp;
 using Tessitura.Core;
+using Tessitura.Editing;
+using Tessitura.Engraving;
 using Tessitura.Rendering;
+using DisplayBox = Tessitura.Engraving.DisplayLists.DisplayBox;
+using DisplayPoint = Tessitura.Engraving.DisplayLists.DisplayPoint;
+using DisplayListPage = Tessitura.Engraving.DisplayLists.Page;
+using ElementId = Tessitura.Engraving.DisplayLists.ElementId;
 
 namespace Tessitura.App;
 
@@ -16,6 +23,8 @@ public sealed class ScoreCanvas : Control
     private readonly MusicPreviewRenderer? _musicPreview;
     private ActionRegistry? _actionRegistry;
     private ScoreInputController? _scoreInputController;
+    private PageSpatialIndex? _pageSpatialIndex;
+    private double _displayPageStaffSpace = 12;
     private Point? _dragPointer;
     private bool _userAdjusted;
 
@@ -110,6 +119,49 @@ public sealed class ScoreCanvas : Control
         }
     }
 
+    /// <summary>Attaches the display-list page used to resolve mouse selections.</summary>
+    /// <param name="page">The page whose elements can be selected.</param>
+    /// <param name="staffSpace">The rendered size of one staff space in page points.</param>
+    public void AttachDisplayPage(DisplayListPage page, double staffSpace = 12)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        if (!double.IsFinite(staffSpace) || staffSpace <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(staffSpace));
+        }
+
+        _pageSpatialIndex = new PageSpatialIndex(page);
+        _displayPageStaffSpace = staffSpace;
+        InvalidateVisual();
+    }
+
+    /// <summary>Selects the page element at a view point.</summary>
+    /// <param name="viewPoint">The pointer location in canvas coordinates.</param>
+    /// <param name="modifiers">The modifiers held with the pointer click.</param>
+    /// <returns><see langword="true"/> if a score element was found and selected.</returns>
+    public bool SelectAt(Point viewPoint, KeyModifiers modifiers)
+    {
+        if (_pageSpatialIndex is null || _scoreInputController is null)
+        {
+            return false;
+        }
+
+        Point pagePoint = ViewToPage(viewPoint);
+        DisplayPoint scorePoint = new(
+            (pagePoint.X - 80) / _displayPageStaffSpace,
+            (pagePoint.Y - 40) / _displayPageStaffSpace);
+        ElementId? elementId = _pageSpatialIndex.HitTest(scorePoint);
+        if (elementId is not ElementId hit)
+        {
+            return false;
+        }
+
+        bool extendRange = (modifiers & KeyModifiers.Shift) != 0;
+        bool additive = !extendRange && (modifiers & KeyModifiers.Control) != 0;
+        _scoreInputController.SelectEvent(new EventId(hit.Value), extendRange, additive);
+        return true;
+    }
+
     internal void AttachActionRegistry(ActionRegistry actionRegistry)
     {
         ArgumentNullException.ThrowIfNull(actionRegistry);
@@ -125,6 +177,17 @@ public sealed class ScoreCanvas : Control
     public override void Render(DrawingContext context)
     {
         context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _musicPreview));
+        if (_pageSpatialIndex is not null && _scoreInputController is { CurrentSelection.Items.IsDefaultOrEmpty: false } selected)
+        {
+            context.Custom(new SelectionDrawOperation(
+                new Rect(Bounds.Size),
+                Zoom,
+                PanOffset,
+                _displayPageStaffSpace,
+                _pageSpatialIndex,
+                selected.CurrentSelection.Items));
+        }
+
         if (_scoreInputController is { Mode: ScoreInputMode.NoteEntry } inputController)
         {
             context.Custom(new CursorDrawOperation(
@@ -166,6 +229,12 @@ public sealed class ScoreCanvas : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         Focus();
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && SelectAt(e.GetPosition(this), e.KeyModifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
         {
             _dragPointer = e.GetPosition(this);
@@ -327,6 +396,72 @@ public sealed class ScoreCanvas : Control
                 (float)pagePoint.X,
                 (float)pagePoint.Y + 50,
                 paint);
+            canvas.Restore();
+        }
+
+        public bool HitTest(Point point) => false;
+
+        public bool Equals(ICustomDrawOperation? other) => false;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class SelectionDrawOperation(
+        Rect bounds,
+        double zoom,
+        Vector panOffset,
+        double staffSpace,
+        PageSpatialIndex spatialIndex,
+        ImmutableArray<SelectionItem> selection) : ICustomDrawOperation
+    {
+        public Rect Bounds { get; } = bounds;
+
+        public void Render(ImmediateDrawingContext context)
+        {
+            ISkiaSharpApiLeaseFeature? feature = context.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+            if (feature is null)
+            {
+                return;
+            }
+
+            using ISkiaSharpApiLease lease = feature.Lease();
+            SKCanvas canvas = lease.SkCanvas;
+            canvas.Save();
+            canvas.Translate((float)panOffset.X, (float)panOffset.Y);
+            canvas.Scale((float)zoom);
+            using SKPaint fill = new()
+            {
+                Color = new SKColor(26, 132, 214, 55),
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            };
+            using SKPaint outline = new()
+            {
+                Color = new SKColor(26, 132, 214),
+                StrokeWidth = 1.5f,
+                Style = SKPaintStyle.Stroke,
+                IsAntialias = true,
+            };
+
+            foreach (SelectionItem item in selection)
+            {
+                ElementId id = new(item.EventId.Value);
+                if (!spatialIndex.TryGetBounds(id, out DisplayBox bounds))
+                {
+                    continue;
+                }
+
+                float left = (float)(80 + bounds.X * staffSpace - 2);
+                float top = (float)(40 + bounds.Y * staffSpace - 2);
+                float right = (float)(80 + (bounds.X + bounds.Width) * staffSpace + 2);
+                float bottom = (float)(40 + (bounds.Y + bounds.Height) * staffSpace + 2);
+                SKRect rectangle = new(left, top, right, bottom);
+                canvas.DrawRect(rectangle, fill);
+                canvas.DrawRect(rectangle, outline);
+            }
+
             canvas.Restore();
         }
 

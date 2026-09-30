@@ -46,6 +46,14 @@ public sealed class History
         _redo.Clear();
     }
 
+    /// <summary>Replaces the selection associated with the current score snapshot.</summary>
+    /// <param name="selection">The current musical selection.</param>
+    public void SetSelection(Selection selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        CurrentSelection = selection;
+    }
+
     /// <summary>Restores the previous score and selection, or returns the current score when empty.</summary>
     /// <returns>The restored score snapshot.</returns>
     public Score Undo()

@@ -134,6 +134,37 @@ public sealed class ScoreInputControllerTests
             ReadPitches(input.CurrentScore));
     }
 
+    [Fact]
+    public void ShiftSelectionIncludesEventsBetweenMusicalEndpoints()
+    {
+        Score score = CreateTwoStaffScore(out EventId[] eventIds);
+        ScoreInputController input = new(score);
+
+        input.SelectEvent(eventIds[0]);
+        input.SelectEvent(eventIds[6], extendRange: true);
+
+        Assert.Equal(eventIds.Take(3).Concat(eventIds.Skip(4).Take(3)),
+            input.CurrentSelection.Items.Select(item => item.EventId));
+        Assert.Equal(
+            new SelectionRange(new MusicalSelectionPoint(0, Fraction.Zero),
+                new MusicalSelectionPoint(1, new Fraction(1, 2))),
+            input.CurrentSelection.Range);
+    }
+
+    [Fact]
+    public void ControlSelectionAddsAnotherElementToTheSelectionList()
+    {
+        Score score = CreateFourNoteScore(out EventId[] eventIds);
+        ScoreInputController input = new(score);
+
+        input.SelectEvent(eventIds[0]);
+        input.SelectEvent(eventIds[2], additive: true);
+
+        Assert.Equal([eventIds[0], eventIds[2]],
+            input.CurrentSelection.Items.Select(item => item.EventId));
+        Assert.Null(input.CurrentSelection.Range);
+    }
+
     private sealed class TemporaryShortcutSettings : IDisposable
     {
         private readonly string _directory = Path.Combine(
@@ -169,5 +200,56 @@ public sealed class ScoreInputControllerTests
             [measure],
             ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
                 new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [rest])])));
+    }
+
+    private static Score CreateFourNoteScore(out EventId[] eventIds)
+    {
+        eventIds = Enumerable.Range(0, 4).Select(_ => new EventId(Guid.NewGuid())).ToArray();
+        ImmutableArray<MusicEvent>.Builder events = ImmutableArray.CreateBuilder<MusicEvent>(4);
+        for (int index = 0; index < eventIds.Length; index++)
+        {
+            events.Add(new Chord(
+                eventIds[index],
+                new Fraction(index, 4),
+                new Duration(NoteValue.Quarter, 0),
+                [new Note(new Pitch(Step.C, 0, 4))],
+                StemDirection.Auto));
+        }
+
+        return new Score(
+            new ScoreMetadata("Selection", ""),
+            [new Instrument("Piano", [new Staff("Treble")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
+            new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, events.ToImmutable())])));
+    }
+
+    private static Score CreateTwoStaffScore(out EventId[] eventIds)
+    {
+        eventIds = Enumerable.Range(0, 8).Select(_ => new EventId(Guid.NewGuid())).ToArray();
+        ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content =
+            ImmutableDictionary.CreateBuilder<StaffMeasureKey, StaffMeasure>();
+        for (int staffIndex = 0; staffIndex < 2; staffIndex++)
+        {
+            ImmutableArray<MusicEvent>.Builder events = ImmutableArray.CreateBuilder<MusicEvent>(4);
+            for (int noteIndex = 0; noteIndex < 4; noteIndex++)
+            {
+                events.Add(new Chord(
+                    eventIds[staffIndex * 4 + noteIndex],
+                    new Fraction(noteIndex, 4),
+                    new Duration(NoteValue.Quarter, 0),
+                    [new Note(new Pitch(Step.C, 0, staffIndex == 0 ? 4 : 3))],
+                    StemDirection.Auto));
+            }
+
+            content.Add(new StaffMeasureKey(staffIndex, 0),
+                new StaffMeasure([new Voice(1, events.ToImmutable())]));
+        }
+
+        return new Score(
+            new ScoreMetadata("Selection", ""),
+            [new Instrument("Piano", [new Staff("Treble"), new Staff("Bass")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            content.ToImmutable());
     }
 }

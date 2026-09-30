@@ -1,5 +1,9 @@
 using Avalonia;
+using Avalonia.Input;
 using Tessitura.App;
+using Tessitura.Core;
+using Tessitura.Editing;
+using Tessitura.Engraving.DisplayLists;
 using Xunit;
 
 namespace Tessitura.Engraving.Tests;
@@ -35,7 +39,7 @@ public sealed class ScoreCanvasTests
     {
         ScoreCanvas canvas = new();
         canvas.Measure(new Size(1000, 800));
-        canvas.Arrange(new Rect(0, 0, 1000, 800));
+        canvas.Arrange(new Avalonia.Rect(0, 0, 1000, 800));
 
         double left = 80 * canvas.Zoom + canvas.PanOffset.X;
         double top = 40 * canvas.Zoom + canvas.PanOffset.Y;
@@ -43,5 +47,30 @@ public sealed class ScoreCanvasTests
         Assert.InRange(top, 0, 800);
         Assert.True(left + 595 * canvas.Zoom < 1000);
         Assert.True(top + 842 * canvas.Zoom < 800);
+    }
+
+    [Fact]
+    public void ClickOnRenderedNoteHeadSelectsItsScoreNote()
+    {
+        EventId eventId = new(Guid.NewGuid());
+        Chord chord = new(eventId, Fraction.Zero, new Duration(NoteValue.Whole, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Score score = new(
+            new ScoreMetadata("Test", ""),
+            [new Instrument("Piano", [new Staff("Treble")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
+                new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [chord])])));
+        ScoreInputController input = new(score);
+        ScoreCanvas canvas = new() { ScoreInputController = input };
+        DisplayBox noteBounds = new(5, 5, 2, 2);
+        Page page = new(1, 100, 100,
+        [new Glyph(new ElementId(eventId.Value), noteBounds, 0xE0A4, new DisplayPoint(5, 6), 4)]);
+        canvas.AttachDisplayPage(page);
+
+        bool selected = canvas.SelectAt(new Point(152, 112), KeyModifiers.None);
+
+        Assert.True(selected);
+        Assert.Equal(new SelectionItem(eventId, 0), Assert.Single(input.CurrentSelection.Items));
     }
 }
