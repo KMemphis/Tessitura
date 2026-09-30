@@ -68,7 +68,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 
 ## F3 · Interoperabilidad y sonido (semanas 27–34)
 
-- [ ] **F3.1 · Corpus MusicXML.** Reunir la MusicXML Test Suite pública y archivos reales exportados desde Dorico, Sibelius y MuseScore, con una métrica de fidelidad de ida y vuelta. *Hecho cuando:* el informe de fidelidad se genera en CI.
+- [x] **F3.1 · Corpus MusicXML.** Reunir la MusicXML Test Suite pública y archivos reales exportados desde Dorico, Sibelius y MuseScore, con una métrica de fidelidad de ida y vuelta. *Hecho cuando:* el informe de fidelidad se genera en CI.
 - [ ] **F3.2 · Importador MusicXML.** Formatos `.musicxml` y `.mxl`, tolerante con errores y con avisos al usuario. *Hecho cuando:* importa sin excepciones el 100 % del corpus dentro del alcance de F3.
 - [ ] **F3.3 · Exportador MusicXML.** Versión 4.0 validada contra el esquema. *Hecho cuando:* toda exportación valida y el 90 % del corpus vuelve sin pérdidas.
 - [ ] **F3.4 · MIDI de archivo.** Importación con cuantización y exportación SMF tipo 1. *Hecho cuando:* una partitura exportada y reimportada conserva alturas y ritmos.

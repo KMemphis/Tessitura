@@ -72,6 +72,15 @@ jobs:
             captures/f1.16-*-candidate.png
             captures/f1.16-contact-sheet.png
           if-no-files-found: error
+      - name: Upload MusicXML fidelity report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: musicxml-fidelity-${{ matrix.os }}
+          path: |
+            captures/f3.1-musicxml-fidelity.md
+            captures/f3.1-musicxml-fidelity.json
+          if-no-files-found: error
       - name: Upload reference differences
         if: failure()
         uses: actions/upload-artifact@v6
