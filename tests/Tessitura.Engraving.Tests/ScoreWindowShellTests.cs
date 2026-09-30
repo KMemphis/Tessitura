@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
 using SkiaSharp;
 using Tessitura.App;
 using Tessitura.Core;
@@ -18,8 +20,10 @@ public sealed class ScoreWindowShellTests
         using ScoreWindowShell shell = new(canvas, CreateInput());
 
         Assert.Same(canvas, shell.Canvas);
-        Assert.Equal("Archivo ▾", shell.FileMenuButton.Content);
-        Assert.Equal("Página ▾", shell.ViewSelectorButton.Content);
+        Assert.Equal("Una página ▾", shell.ViewSelectorText);
+        Assert.Contains("file.open-menu", shell.ToolbarButtons.Keys);
+        Assert.Contains("file.new", shell.CreateActions().Select(action => action.Id));
+        Assert.Contains("file.open", shell.CreateActions().Select(action => action.Id));
         Assert.Equal(0, Grid.GetRow(shell.TopBar));
         Assert.Equal(1, Grid.GetRow(shell.LeftPanel));
         Assert.Equal(0, Grid.GetColumn(shell.LeftPanel));
@@ -32,12 +36,32 @@ public sealed class ScoreWindowShellTests
     }
 
     [Fact]
+    public void RibbonShowsPrimaryActionsAndMovesSecondaryChoicesIntoMenus()
+    {
+        using ScoreWindowShell shell = new(new ScoreCanvas(), CreateInput());
+
+        Assert.Equal(
+        [
+            "file.open-menu", "score.selection-mode", "score.note-entry", "playback.toggle",
+            "view.zoom-out", "view.fit-page", "view.zoom-in", "view.open-selector",
+            "score.duration.open-selector", "view.more",
+        ], shell.ToolbarButtons.Keys);
+        Assert.Equal("Negra ▾", shell.ToolbarLabel("score.duration.open-selector"));
+        Assert.Equal("Una página ▾", shell.ViewSelectorText);
+
+        StackPanel topBarContent = Assert.IsType<StackPanel>(shell.TopBar.Child);
+        ScrollViewer ribbonScroll = Assert.IsType<ScrollViewer>(topBarContent.Children[0]);
+        Assert.Equal(ScrollBarVisibility.Auto, ribbonScroll.HorizontalScrollBarVisibility);
+        Assert.Equal(ScrollBarVisibility.Disabled, ribbonScroll.VerticalScrollBarVisibility);
+        Assert.Equal(Orientation.Horizontal, Assert.IsType<StackPanel>(ribbonScroll.Content).Orientation);
+    }
+
+    [Fact]
     public void ToolbarAndAdvancedPaletteExposeWorkingControls()
     {
         using ScoreWindowShell shell = new(new ScoreCanvas(), CreateInput());
 
-        Assert.True(shell.FileMenuButton.IsEnabled);
-        Assert.True(shell.EditMenuButton.IsEnabled);
+        Assert.True(shell.ToolbarButtons["file.open-menu"].IsEnabled);
         Assert.True(shell.PlayButton.IsEnabled);
         Assert.True(shell.StopButton.IsEnabled);
 
@@ -53,6 +77,61 @@ public sealed class ScoreWindowShellTests
     }
 
     [Fact]
+    public void RibbonReflectsTheActiveToolAndSelectedDuration()
+    {
+        ScoreInputController input = CreateInput();
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-ribbon-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+
+            Assert.False(shell.IsToolbarActionActive("score.note-entry"));
+            Assert.True(actions.TryExecute("score.note-entry"));
+            Assert.True(shell.IsToolbarActionActive("score.note-entry"));
+            Assert.False(shell.IsToolbarActionActive("score.selection-mode"));
+            Assert.True(actions.TryExecute("score.duration.half"));
+            Assert.Equal("Blanca ▾", shell.ToolbarLabel("score.duration.open-selector"));
+            Assert.True(shell.ToolbarButtons["score.note-entry"].IsEnabled);
+            Assert.True(shell.ToolbarButtons["score.duration.open-selector"].IsEnabled);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
+    public void NewAndOpenRibbonButtonsInvokeTheirApplicationCallbacks()
+    {
+        int newRequests = 0;
+        int openRequests = 0;
+        using ScoreWindowShell shell = new(new ScoreCanvas(), CreateInput(),
+            () => newRequests++, () =>
+            {
+                openRequests++;
+                return Task.CompletedTask;
+            });
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-files-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(shell.CreateActions(), settings);
+            shell.AttachActionRegistry(actions);
+            Assert.True(actions.TryExecute("file.open-menu"));
+            Assert.True(actions.TryExecute("file.new"));
+            Assert.True(actions.TryExecute("file.open"));
+            Assert.Equal(1, newRequests);
+            Assert.Equal(1, openRequests);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
     public void PrimaryNoteControlAndDurationCanWriteTheFirstNote()
     {
         ScoreInputController input = CreateInput();
@@ -63,7 +142,7 @@ public sealed class ScoreWindowShellTests
             ActionRegistry actions = ActionRegistry.LoadOrCreate(
                 input.CreateActions().AddRange(shell.CreateActions()), settings);
             shell.AttachActionRegistry(actions);
-            Assert.Equal("Escribir notas", shell.NoteEntryButton.Content);
+            Assert.Equal("Nota", shell.ToolbarLabel("score.note-entry"));
             Assert.True(actions.TryExecute("score.note-entry"));
             Assert.Contains("C D E F G A B", shell.EntryGuideText);
             Assert.True(actions.TryExecute("score.duration.half"));
@@ -76,6 +155,48 @@ public sealed class ScoreWindowShellTests
         {
             File.Delete(settings);
         }
+    }
+
+    [Fact]
+    public void PaletteCategoriesStartCompactAndExpandThroughRegisteredActions()
+    {
+        ScoreInputController input = CreateInput();
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-groups-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            Assert.False(shell.IsPaletteGroupOpen("Armaduras"));
+            Assert.True(actions.TryExecute("palette.group.key-signatures"));
+            Assert.True(shell.IsPaletteGroupOpen("Armaduras"));
+            Assert.True(actions.TryExecute("palette.group.key-signatures"));
+            Assert.False(shell.IsPaletteGroupOpen("Armaduras"));
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
+    public void InspectorAndNoticesExplainTheCurrentContext()
+    {
+        ScoreInputController input = CreateInput();
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        Assert.False(shell.InspectorEditorVisible);
+        Assert.Contains("nota", shell.InspectorDetailsText, StringComparison.OrdinalIgnoreCase);
+
+        EventId restId = input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+            .Voices[0].Events[0].Id;
+        input.SelectEvent(restId);
+        Assert.True(shell.InspectorEditorVisible);
+
+        shell.ShowNotice("No se pudo reproducir. Comprueba la salida de audio.", true);
+        Assert.Contains("salida de audio", shell.NoticeText);
+        shell.ClearNotice();
+        Assert.Equal(string.Empty, shell.NoticeText);
     }
 
     [Fact]
@@ -126,13 +247,13 @@ public sealed class ScoreWindowShellTests
             Assert.True(actions.TryExecute("view.continuous"));
             Assert.Equal(ScoreViewMode.Continuous, shell.CurrentView);
             Assert.Equal(selection, input.CurrentSelection);
-            Assert.Equal("Continua ▾", shell.ViewSelectorButton.Content);
+            Assert.Equal("Continua ▾", shell.ViewSelectorText);
 
             Assert.True(actions.TryExecute("view.part.select.0"));
             Assert.Equal(ScoreViewMode.Part, shell.CurrentView);
             Assert.Equal("Flute", shell.CurrentPart?.Name);
             Assert.Equal(selection, input.CurrentSelection);
-            Assert.Equal("Flute ▾", shell.ViewSelectorButton.Content);
+            Assert.Equal("Flute ▾", shell.ViewSelectorText);
 
             Assert.True(actions.TryExecute("view.page"));
             Assert.Equal(ScoreViewMode.Page, shell.CurrentView);

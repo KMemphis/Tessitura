@@ -21,23 +21,35 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private readonly TextBlock _inspectorDetails;
     private readonly ImmutableArray<ScorePartView> _availableParts;
     private readonly List<(Button Button, bool RequiresNote)> _inspectorButtons = [];
-    private readonly List<(Button Button, NoteValue Value)> _entryDurationButtons = [];
+    private readonly List<(Button Button, Step Step)> _inspectorPitchButtons = [];
+    private readonly Dictionary<string, (Button Header, WrapPanel Items)> _paletteGroups = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Button> _toolbarButtons = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _activeToolbarActions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (TextBlock Icon, TextBlock Caption)> _toolbarVisuals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _toolbarRequirements = new(StringComparer.Ordinal);
     private readonly List<Control> _themedControls = [];
     private readonly List<Border> _popupSurfaces = [];
-    private Popup? _fileMenuPopup;
-    private Popup? _editMenuPopup;
-    private Popup? _viewMenuPopup;
+    private readonly List<Border> _toolbarSeparators = [];
+    private readonly Action _newScoreRequested;
+    private readonly Func<Task> _openScoreRequested;
+    private Popup? _morePopup;
+    private Popup? _filePopup;
     private Popup? _viewSelectorPopup;
+    private Popup? _durationSelectorPopup;
     private ActionRegistry? _actions;
     private CommandPalette? _commandPalette;
     private TextPopover? _textPopover;
     private bool _isDarkTheme = true;
+    private bool _isPlaying;
 
     /// <summary>Creates the main editor layout around an existing score canvas.</summary>
-    public ScoreWindowShell(ScoreCanvas canvas, ScoreInputController input)
+    public ScoreWindowShell(ScoreCanvas canvas, ScoreInputController input,
+        Action? newScoreRequested = null, Func<Task>? openScoreRequested = null)
     {
         Canvas = canvas ?? throw new ArgumentNullException(nameof(canvas));
         _input = input ?? throw new ArgumentNullException(nameof(input));
+        _newScoreRequested = newScoreRequested ?? (() => { });
+        _openScoreRequested = openScoreRequested ?? (() => Task.CompletedTask);
         _availableParts = GetAvailableParts(input.CurrentScore);
         _layout = new Grid
         {
@@ -96,12 +108,6 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     /// <summary>Gets the cursor and selection status area.</summary>
     public Border StatusBar { get; }
 
-    /// <summary>Gets the visible file menu label.</summary>
-    public Button FileMenuButton { get; private set; } = null!;
-
-    /// <summary>Gets the visible edit menu label.</summary>
-    public Button EditMenuButton { get; private set; } = null!;
-
     /// <summary>Gets the visible play or pause button.</summary>
     public Button PlayButton { get; private set; } = null!;
 
@@ -111,10 +117,81 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     /// <summary>Gets the primary note-writing control.</summary>
     public Button NoteEntryButton { get; private set; } = null!;
 
+    /// <summary>Gets the page view toolbar button.</summary>
+    public Button PageViewButton { get; private set; } = null!;
+
+    /// <summary>Gets the continuous view toolbar button.</summary>
+    public Button ContinuousViewButton { get; private set; } = null!;
+
+    /// <summary>Gets the part view toolbar button.</summary>
+    public Button PartViewButton { get; private set; } = null!;
+
+    /// <summary>Gets the current label on the view selector button.</summary>
+    public string ViewSelectorText => _toolbarVisuals["view.open-selector"].Caption.Text ?? string.Empty;
+
+    /// <summary>Gets the main toolbar buttons keyed by their registered action identifier.</summary>
+    public IReadOnlyDictionary<string, Button> ToolbarButtons => _toolbarButtons;
+
+    /// <summary>Gets the visible caption of a toolbar action.</summary>
+    /// <param name="actionId">The registered action identifier.</param>
+    /// <returns>The caption shown below the action icon.</returns>
+    public string ToolbarLabel(string actionId) => _toolbarVisuals.TryGetValue(actionId,
+        out (TextBlock Icon, TextBlock Caption) visual) ? visual.Caption.Text ?? string.Empty : string.Empty;
+
+    /// <summary>Gets whether a toolbar action currently has its selected visual state.</summary>
+    /// <param name="actionId">The action identifier.</param>
+    /// <returns>True when the action is highlighted.</returns>
+    public bool IsToolbarActionActive(string actionId) => _activeToolbarActions.Contains(actionId);
+
     /// <summary>Gets the in-editor instruction for the current input mode.</summary>
     public string EntryGuideText => _entryGuide.Text ?? string.Empty;
 
     private TextBlock _entryGuide = null!;
+    private StackPanel _inspectorEditors = null!;
+    private Border _noticeBar = null!;
+    private TextBlock _noticeText = null!;
+
+    /// <summary>Gets whether controls for an individual selection are visible.</summary>
+    public bool InspectorEditorVisible => _inspectorEditors.IsVisible;
+
+    /// <summary>Gets the current action feedback shown beside the toolbar.</summary>
+    public string NoticeText => _noticeText.Text ?? string.Empty;
+
+    /// <summary>Gets whether a notation palette is expanded.</summary>
+    public bool IsPaletteGroupOpen(string title) => _paletteGroups.TryGetValue(title, out var group) &&
+        group.Items.IsVisible;
+
+    /// <summary>Updates the transport button to match the active playback state.</summary>
+    /// <param name="isPlaying">Whether playback is currently running.</param>
+    public void SetPlaybackState(bool isPlaying)
+    {
+        if (_isPlaying == isPlaying)
+        {
+            return;
+        }
+
+        _isPlaying = isPlaying;
+        SetToolbarContent("playback.toggle", isPlaying ? "Ⅱ" : "▶", isPlaying ? "Pausa" : "Reproducir");
+        SetToolbarActionActive("playback.toggle", isPlaying);
+    }
+
+    /// <summary>Shows contextual feedback after a file or playback action.</summary>
+    public void ShowNotice(string message, bool isError)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        _noticeText.Text = message;
+        _noticeBar.Background = new SolidColorBrush(isError
+            ? Color.Parse(_isDarkTheme ? "#533333" : "#FCE8E6")
+            : Color.Parse(_isDarkTheme ? "#254B3F" : "#E3F4EA"));
+        _noticeBar.IsVisible = true;
+    }
+
+    /// <summary>Dismisses the current feedback message.</summary>
+    public void ClearNotice()
+    {
+        _noticeText.Text = string.Empty;
+        _noticeBar.IsVisible = false;
+    }
 
     /// <summary>Gets the current view selector.</summary>
     public Button ViewSelectorButton { get; private set; } = null!;
@@ -150,8 +227,11 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         actions.AddRange((ReadOnlySpan<ActionDefinition>)
         [
         new("command-palette.open", "Abrir paleta de comandos", "Ctrl+K", ToggleCommandPalette),
-        new("file.open-menu", "Abrir menú Archivo", "Ctrl+Shift+F", () => TogglePopup(_fileMenuPopup)),
-        new("edit.open-menu", "Abrir menú Editar", "Ctrl+Shift+E", () => TogglePopup(_editMenuPopup)),
+        new("file.new", "Nueva partitura", "Ctrl+N", () => _newScoreRequested()),
+        new("file.open", "Abrir partitura", "Ctrl+O", () => _ = _openScoreRequested()),
+        new("view.more", "Más opciones", "Ctrl+Shift+M", ToggleMore),
+        new("file.open-menu", "Abrir opciones de archivo", "Ctrl+Shift+F", () => TogglePopup(_filePopup)),
+        new("edit.open-menu", "Abrir opciones de edición", "Ctrl+Shift+E", ToggleMore),
         new("text.dynamic", "Escribir dinámica", "Shift+D", () => _textPopover?.Open(TextEntryKind.Dynamic)),
         new("text.tempo", "Escribir tempo", "Shift+T", () => _textPopover?.Open(TextEntryKind.Tempo)),
         new("text.text", "Escribir texto o cifrado", "Shift+X", () => _textPopover?.Open(TextEntryKind.Text)),
@@ -159,9 +239,11 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         new("view.page", "Vista de página", "Ctrl+Shift+1", SelectPageView),
         new("view.continuous", "Vista continua", "Ctrl+Shift+3", SelectContinuousView),
         new("view.part", "Vista de parte", "Ctrl+Shift+4", SelectFirstPartView),
-        new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
+        new("view.open-menu", "Abrir opciones de vista", "Ctrl+Shift+V", () => TogglePopup(_viewSelectorPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",
             () => TogglePopup(_viewSelectorPopup)),
+        new("score.duration.open-selector", "Elegir duración de nota", "Ctrl+Shift+D",
+            () => TogglePopup(_durationSelectorPopup)),
         new("view.toggle-left-panel", "Mostrar u ocultar paletas", "Ctrl+Shift+L",
             () => LeftPanel.IsVisible = !LeftPanel.IsVisible),
         new("view.toggle-right-panel", "Mostrar u ocultar inspector", "Ctrl+Shift+R",
@@ -190,12 +272,40 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             () => _input.ToggleSelectedTie()),
         ]);
 
+        (Step Step, string Name, string Shortcut)[] pitches =
+        [
+            (Step.C, "Do", "Meta+Alt+Shift+C"), (Step.D, "Re", "Meta+Alt+Shift+D"),
+            (Step.E, "Mi", "Meta+Alt+Shift+E"), (Step.F, "Fa", "Meta+Alt+Shift+F"),
+            (Step.G, "Sol", "Meta+Alt+Shift+G"), (Step.A, "La", "Meta+Alt+Shift+A"),
+            (Step.B, "Si", "Meta+Alt+Shift+B"),
+        ];
+        foreach ((Step step, string name, string shortcut) in pitches)
+        {
+            actions.Add(new ActionDefinition($"inspector.pitch.{step.ToString().ToLowerInvariant()}",
+                $"Cambiar la nota seleccionada a {name}", shortcut,
+                () => _input.ChangeSelectedPitchStep(step)));
+        }
+
         for (int partIndex = 0; partIndex < _availableParts.Length; partIndex++)
         {
             ScorePartView part = _availableParts[partIndex];
             actions.Add(new ActionDefinition($"view.part.select.{partIndex}",
                 $"Vista de parte: {part.Name}", GetPartShortcut(partIndex),
                 () => SelectPartView(part)));
+        }
+
+        (string Title, string Id)[] paletteCategories =
+        [
+            ("Claves", "clefs"), ("Armaduras", "key-signatures"),
+            ("Compases", "meters"), ("Alteraciones", "accidentals"),
+            ("Dinámicas", "dynamics"), ("Articulaciones", "articulations"),
+            ("Líneas", "lines"), ("Texto", "text"),
+        ];
+        for (int category = 0; category < paletteCategories.Length; category++)
+        {
+            (string title, string id) = paletteCategories[category];
+            actions.Add(new ActionDefinition($"palette.group.{id}", $"Mostrar u ocultar {title}",
+                $"Meta+Alt+Shift+F{category + 1}", () => TogglePaletteGroup(title)));
         }
 
         int shortcutIndex = 0;
@@ -319,87 +429,214 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
 
     private Border CreateTopBar()
     {
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10,
-            VerticalAlignment = VerticalAlignment.Center };
-        FileMenuButton = CreateButton("Archivo ▾", "Abrir menú Archivo", "file.open-menu");
-        row.Children.Add(FileMenuButton);
-        _fileMenuPopup = CreatePopup(FileMenuButton,
+        StackPanel ribbon = new() { Orientation = Orientation.Horizontal };
+        AddToolbarGroup(ribbon, ("file.open-menu", "▣", "Archivo", "Nueva, abrir, guardar o exportar", false));
+        AddToolbarGroup(ribbon,
+            ("score.selection-mode", "↖", "Seleccionar", "Seleccionar elementos (Esc)", false),
+            ("score.note-entry", "♫", "Nota", "Escribir notas (N)", false));
+        AddToolbarGroup(ribbon, ("playback.toggle", "▶", "Reproducir", "Reproducir o pausar", false));
+        AddToolbarGroup(ribbon,
+            ("view.zoom-out", "−", "Reducir", "Reducir el zoom", false),
+            ("view.fit-page", "↔", "Ajustar", "Ajustar la página a la ventana", false),
+            ("view.zoom-in", "+", "Ampliar", "Aumentar el zoom", false));
+        AddToolbarGroup(ribbon, ("view.open-selector", "▤", "Una página ▾",
+            "Seleccionar una vista o una parte", false));
+        AddToolbarGroup(ribbon, ("score.duration.open-selector", "♩", "Negra ▾",
+            "Elegir la duración para las notas nuevas", false));
+        AddToolbarGroup(ribbon, ("view.more", "⋯", "Más", "Deshacer, borrar y otras opciones", false));
+
+        PlayButton = _toolbarButtons["playback.toggle"];
+        StopButton = CreateButton("Detener", "Detener la reproducción", "playback.stop");
+        NoteEntryButton = _toolbarButtons["score.note-entry"];
+        Button fileButton = _toolbarButtons["file.open-menu"];
+        _filePopup = CreatePopup(fileButton,
         [
+            CreateButton("Nueva partitura", "Crear una partitura", "file.new"),
+            CreateButton("Abrir…", "Abrir una partitura .tess", "file.open"),
             CreateButton("Guardar", "Guardar la partitura", "file.save"),
             CreateButton("Guardar como…", "Guardar con otro nombre", "file.save-as"),
             CreateButton("Exportar PDF…", "Exportar la partitura", "file.export-pdf"),
-            CreateButton("Cerrar", "Volver al inicio", "file.close"),
+            CreateButton("Cerrar partitura", "Volver al inicio", "file.close"),
         ]);
-        row.Children.Add(_fileMenuPopup);
-        EditMenuButton = CreateButton("Editar ▾", "Abrir menú Editar", "edit.open-menu");
-        row.Children.Add(EditMenuButton);
-        _editMenuPopup = CreatePopup(EditMenuButton,
+
+        ViewSelectorButton = _toolbarButtons["view.open-selector"];
+        PageViewButton = CreateButton("Una página", "Vista de página", "view.page");
+        ContinuousViewButton = CreateButton("Continua", "Vista continua", "view.continuous");
+        PartViewButton = CreateButton("Parte", "Vista de la primera parte", "view.part",
+            _availableParts.Length > 0);
+        _viewSelectorPopup = CreatePopup(ViewSelectorButton,
+        [
+            PageViewButton,
+            ContinuousViewButton,
+            PartViewButton,
+            .. CreatePartViewButtons(),
+        ]);
+
+        Button durationButton = _toolbarButtons["score.duration.open-selector"];
+        _durationSelectorPopup = CreatePopup(durationButton,
+        [
+            CreateButton("Redonda", "Duración de redonda", "score.duration.whole"),
+            CreateButton("Blanca", "Duración de blanca", "score.duration.half"),
+            CreateButton("Negra", "Duración de negra", "score.duration.quarter"),
+            CreateButton("Corchea", "Duración de corchea", "score.duration.eighth"),
+            CreateButton("Semicorchea", "Duración de semicorchea", "score.duration.sixteenth"),
+        ]);
+
+        Button moreButton = _toolbarButtons["view.more"];
+        _morePopup = CreatePopup(moreButton,
         [
             CreateButton("Deshacer", "Deshacer la última edición", "score.undo"),
             CreateButton("Rehacer", "Rehacer la última edición", "score.redo"),
+            CreateButton("Borrar nota", "Reemplazar la nota seleccionada por un silencio", "score.delete"),
             CreateButton("Copiar", "Copiar la selección", "edit.copy"),
             CreateButton("Pegar", "Pegar en el cursor", "edit.paste"),
+            CreateButton("Detener reproducción", "Detener la reproducción", "playback.stop"),
+            CreateButton("Paleta de comandos…", "Buscar cualquier acción (Ctrl+K)", "command-palette.open"),
+            CreateButton("Cambiar tema", "Alternar tema claro y oscuro", "view.toggle-theme"),
+            CreateButton("Paletas", "Mostrar u ocultar las paletas", "view.toggle-left-panel"),
+            CreateButton("Inspector", "Mostrar u ocultar el inspector", "view.toggle-right-panel"),
+            CreateButton("Mezclador", "Mostrar u ocultar el mezclador", "view.toggle-bottom-panel"),
+            CreateButton("Cerrar partitura", "Volver al inicio", "file.close"),
         ]);
-        row.Children.Add(_editMenuPopup);
-        Button viewMenu = CreateButton("Ver ▾", "Abrir menú Ver", "view.open-menu");
-        row.Children.Add(viewMenu);
-        _viewMenuPopup = CreatePopup(viewMenu,
-        [
-            CreateButton("Acercar", "Acercar", "view.zoom-in"),
-            CreateButton("Alejar", "Alejar", "view.zoom-out"),
-            CreateButton("Ajustar página", "Ajustar página", "view.fit-page"),
-            CreateButton("Paletas", "Paletas", "view.toggle-left-panel"),
-            CreateButton("Inspector", "Inspector", "view.toggle-right-panel"),
-            CreateButton("Panel inferior", "Panel inferior", "view.toggle-bottom-panel"),
-            CreateButton("Tema claro/oscuro", "Tema claro/oscuro", "view.toggle-theme"),
-        ]);
-        row.Children.Add(_viewMenuPopup);
-
-        ViewSelectorButton = CreateButton("Página ▾", "Seleccionar vista", "view.open-selector");
-        row.Children.Add(ViewSelectorButton);
-        _viewSelectorPopup = CreatePopup(ViewSelectorButton,
-        [
-            CreateButton("Página", "Vista de página", "view.page"),
-            CreateButton("Continua", "Vista continua de galera", "view.continuous"),
-            CreateButton("Parte", "Vista de la primera parte", "view.part", _availableParts.Length > 0),
-            .. CreatePartViewButtons(),
-        ]);
-        row.Children.Add(_viewSelectorPopup);
-        PlayButton = CreateButton("▶", "Reproducir o pausar", "playback.toggle");
-        row.Children.Add(PlayButton);
-        StopButton = CreateButton("■", "Detener y volver al inicio", "playback.stop");
-        row.Children.Add(StopButton);
-        row.Children.Add(CreateButton("−", "Alejar", "view.zoom-out"));
-        row.Children.Add(CreateButton("+", "Acercar", "view.zoom-in"));
-        row.Children.Add(CreateButton("Ajustar", "Ajustar página", "view.fit-page"));
-        row.Children.Add(CreateButton("☰", "Paletas", "view.toggle-left-panel"));
-        row.Children.Add(CreateButton("▤", "Inspector", "view.toggle-right-panel"));
-        row.Children.Add(CreateButton("▱", "Panel inferior", "view.toggle-bottom-panel"));
-        row.Children.Add(CreateButton("◐", "Cambiar tema", "view.toggle-theme"));
-        StackPanel entryRow = new() { Orientation = Orientation.Horizontal, Spacing = 5,
-            VerticalAlignment = VerticalAlignment.Center };
-        NoteEntryButton = CreateButton("Escribir notas", "Activa la entrada de notas (N)", "score.note-entry");
-        entryRow.Children.Add(NoteEntryButton);
-        entryRow.Children.Add(CreateButton("Seleccionar", "Vuelve a seleccionar (Esc)", "score.selection-mode"));
-        foreach ((string label, NoteValue value, string action) in new[]
-        {
-            ("16.ª", NoteValue.Sixteenth, "score.duration.sixteenth"),
-            ("Corchea", NoteValue.Eighth, "score.duration.eighth"),
-            ("Negra", NoteValue.Quarter, "score.duration.quarter"),
-            ("Blanca", NoteValue.Half, "score.duration.half"),
-            ("Redonda", NoteValue.Whole, "score.duration.whole"),
-        })
-        {
-            Button durationButton = CreateButton(label, $"Duración: {label}", action);
-            _entryDurationButtons.Add((durationButton, value));
-            entryRow.Children.Add(durationButton);
-        }
-
         _entryGuide = CreateLabel("", 12);
         _entryGuide.VerticalAlignment = VerticalAlignment.Center;
         _entryGuide.TextWrapping = TextWrapping.Wrap;
-        StackPanel content = new() { Spacing = 4, Children = { row, entryRow, _entryGuide } };
-        return new Border { Child = content, Padding = new Thickness(10, 6), MinHeight = 104 };
+        _noticeText = CreateLabel("", 12);
+        _noticeText.TextWrapping = TextWrapping.Wrap;
+        _noticeBar = new Border { Child = _noticeText, Padding = new Thickness(8, 5),
+            CornerRadius = new CornerRadius(4), IsVisible = false };
+        ScrollViewer toolbarScroll = new()
+        {
+            Content = ribbon,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Height = 58,
+        };
+        StackPanel content = new() { Spacing = 3, Children = { toolbarScroll, _entryGuide, _noticeBar } };
+        return new Border { Child = content, Padding = new Thickness(5, 4) };
+    }
+
+    private void AddToolbarGroup(StackPanel ribbon,
+        params (string ActionId, string Icon, string Label, string Hint, bool RequiresNote)[] items)
+    {
+        StackPanel group = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
+        foreach ((string actionId, string icon, string label, string hint, bool requiresNote) in items)
+        {
+            Button button = CreateToolbarButton(actionId, icon, label, hint, requiresNote);
+            group.Children.Add(button);
+            if (actionId == "view.page") PageViewButton = button;
+            if (actionId == "view.continuous") ContinuousViewButton = button;
+            if (actionId == "view.part") PartViewButton = button;
+        }
+
+        Border separator = new()
+        {
+            Child = group,
+            Padding = new Thickness(3, 1, 7, 1),
+            BorderThickness = new Thickness(0, 0, 1, 0),
+        };
+        _toolbarSeparators.Add(separator);
+        ribbon.Children.Add(separator);
+    }
+
+    private Button CreateToolbarButton(string actionId, string icon, string label, string hint, bool requiresNote)
+    {
+        TextBlock iconText = CreateLabel(icon, 20, FontWeight.SemiBold);
+        iconText.HorizontalAlignment = HorizontalAlignment.Center;
+        TextBlock caption = CreateLabel(label, 10);
+        caption.HorizontalAlignment = HorizontalAlignment.Center;
+        caption.TextTrimming = TextTrimming.CharacterEllipsis;
+        caption.MaxWidth = 72;
+        StackPanel content = new() { Spacing = 0, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, Children = { iconText, caption } };
+        Button button = new()
+        {
+            Content = content,
+            Width = 74,
+            Height = 54,
+            Padding = new Thickness(2),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(button, hint);
+        button.Click += (_, _) => Execute(actionId);
+        _themedControls.Add(button);
+        _toolbarButtons.Add(actionId, button);
+        _toolbarVisuals.Add(actionId, (iconText, caption));
+        _toolbarRequirements.Add(actionId, requiresNote);
+        return button;
+    }
+
+    private void SetToolbarContent(string actionId, string icon, string caption)
+    {
+        if (_toolbarVisuals.TryGetValue(actionId, out (TextBlock Icon, TextBlock Caption) visual))
+        {
+            visual.Icon.Text = icon;
+            visual.Caption.Text = caption;
+        }
+    }
+
+    private void SetToolbarActionActive(string actionId, bool active)
+    {
+        if (!_toolbarButtons.TryGetValue(actionId, out Button? button))
+        {
+            return;
+        }
+
+        if (active) _activeToolbarActions.Add(actionId);
+        else _activeToolbarActions.Remove(actionId);
+
+        if (active)
+        {
+            SolidColorBrush accent = new(Color.Parse("#176DB0"));
+            button.Background = accent;
+            button.Foreground = new SolidColorBrush(Colors.White);
+            button.BorderBrush = new SolidColorBrush(Color.Parse("#429BE0"));
+            button.BorderThickness = new Thickness(1);
+            button.FontWeight = FontWeight.Bold;
+            if (_toolbarVisuals.TryGetValue(actionId, out (TextBlock Icon, TextBlock Caption) visual))
+            {
+                visual.Icon.Foreground = new SolidColorBrush(Colors.White);
+                visual.Caption.Foreground = new SolidColorBrush(Colors.White);
+            }
+        }
+        else
+        {
+            button.ClearValue(TemplatedControl.BackgroundProperty);
+            button.ClearValue(TemplatedControl.ForegroundProperty);
+            button.ClearValue(TemplatedControl.BorderBrushProperty);
+            button.BorderThickness = new Thickness(0);
+            button.FontWeight = FontWeight.Normal;
+            if (_toolbarVisuals.TryGetValue(actionId, out (TextBlock Icon, TextBlock Caption) visual))
+            {
+                IBrush text = new SolidColorBrush(Color.Parse(_isDarkTheme ? "#EDF0F4" : "#202834"));
+                visual.Icon.Foreground = text;
+                visual.Caption.Foreground = text;
+            }
+        }
+    }
+
+    private void UpdateToolbarState(ScoreEventProperties? properties)
+    {
+        bool hasSelectedNote = properties is { HasSelectedNote: true };
+        foreach ((string actionId, bool requiresNote) in _toolbarRequirements)
+        {
+            Button button = _toolbarButtons[actionId];
+            button.IsEnabled = !requiresNote || hasSelectedNote;
+            button.Opacity = button.IsEnabled ? 1 : 0.48;
+        }
+
+        bool writing = _input.Mode == ScoreInputMode.NoteEntry;
+        SetToolbarActionActive("score.note-entry", writing);
+        SetToolbarActionActive("score.selection-mode", !writing);
+        SetToolbarContent("score.duration.open-selector",
+            GetDurationIcon(_input.CurrentDuration.Value), $"{GetDurationLabel(_input.CurrentDuration.Value)} ▾");
+        int? alteration = hasSelectedNote ? properties!.Notes[0].Pitch.Alter : null;
+        SetToolbarActionActive("inspector.alteration.flat", alteration == -1);
+        SetToolbarActionActive("inspector.alteration.natural", alteration == 0);
+        SetToolbarActionActive("inspector.alteration.sharp", alteration == 1);
+        bool tied = hasSelectedNote && properties!.Notes[0].TiedToNext;
+        SetToolbarActionActive("score.tie.toggle", tied);
     }
 
     private Border CreateNotationPalettePanel()
@@ -477,7 +714,19 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private void AddPaletteGroup(StackPanel parent, string title,
         (string Label, string ActionId)[] items)
     {
-        parent.Children.Add(CreateLabel(title, 14, FontWeight.SemiBold));
+        string id = title switch
+        {
+            "Claves" => "clefs", "Armaduras" => "key-signatures",
+            "Compases" => "meters", "Alteraciones" => "accidentals",
+            "Dinámicas" => "dynamics", "Articulaciones" => "articulations",
+            "Líneas" => "lines", "Texto" => "text",
+            _ => throw new ArgumentOutOfRangeException(nameof(title)),
+        };
+        Button header = CreateButton($"▸  {title}", $"Mostrar u ocultar {title}", $"palette.group.{id}");
+        header.HorizontalAlignment = HorizontalAlignment.Stretch;
+        header.HorizontalContentAlignment = HorizontalAlignment.Left;
+        header.FontWeight = FontWeight.SemiBold;
+        parent.Children.Add(header);
         WrapPanel row = new() { Orientation = Orientation.Horizontal };
         foreach ((string label, string actionId) in items)
         {
@@ -489,7 +738,16 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             row.Children.Add(button);
         }
 
+        row.IsVisible = false;
         parent.Children.Add(row);
+        _paletteGroups.Add(title, (header, row));
+    }
+
+    private void TogglePaletteGroup(string title)
+    {
+        (Button header, WrapPanel items) = _paletteGroups[title];
+        items.IsVisible = !items.IsVisible;
+        header.Content = $"{(items.IsVisible ? "▾" : "▸")}  {title}";
     }
 
     private static string CreatePaletteShortcut(int index)
@@ -528,34 +786,61 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     {
         StackPanel stack = new() { Spacing = 10, Margin = new Thickness(14) };
         stack.Children.Add(CreateLabel("Inspector", 17, FontWeight.SemiBold));
-        inspectorText = CreateLabel("Selecciona un elemento", 13);
+        inspectorText = CreateLabel("Sin selección", 13, FontWeight.SemiBold);
         stack.Children.Add(inspectorText);
-        inspectorDetails = CreateLabel(string.Empty, 13);
+        inspectorDetails = CreateLabel("Para editar una nota o un silencio, haz clic sobre el pentagrama.", 13);
+        inspectorDetails.TextWrapping = TextWrapping.Wrap;
         stack.Children.Add(inspectorDetails);
-        stack.Children.Add(CreateLabel("Duración", 14, FontWeight.SemiBold));
-        stack.Children.Add(CreateInspectorButtonRow(
+        _inspectorEditors = new StackPanel { Spacing = 10, IsVisible = false };
+        _inspectorEditors.Children.Add(CreateLabel("Altura", 14, FontWeight.SemiBold));
+        _inspectorEditors.Children.Add(CreateInspectorPitchButtons());
+        TextBlock pitchHint = CreateLabel("⌘+↑/↓: un paso · ⇧⌘+↑/↓: una octava", 10);
+        pitchHint.TextWrapping = TextWrapping.Wrap;
+        _inspectorEditors.Children.Add(pitchHint);
+        _inspectorEditors.Children.Add(CreateLabel("Duración", 14, FontWeight.SemiBold));
+        _inspectorEditors.Children.Add(CreateInspectorButtonRow(
         [
             ("Redonda", "inspector.duration.whole", false),
             ("Blanca", "inspector.duration.half", false),
             ("Negra", "inspector.duration.quarter", false),
         ]));
-        stack.Children.Add(CreateInspectorButtonRow(
+        _inspectorEditors.Children.Add(CreateInspectorButtonRow(
         [
             ("Corchea", "inspector.duration.eighth", false),
             ("16.ª", "inspector.duration.sixteenth", false),
             ("Puntillo", "inspector.dot.toggle", false),
         ]));
-        stack.Children.Add(CreateLabel("Nota", 14, FontWeight.SemiBold));
-        stack.Children.Add(CreateInspectorButtonRow(
+        _inspectorEditors.Children.Add(CreateLabel("Nota", 14, FontWeight.SemiBold));
+        _inspectorEditors.Children.Add(CreateInspectorButtonRow(
         [
             ("♭", "inspector.alteration.flat", true),
             ("♮", "inspector.alteration.natural", true),
             ("♯", "inspector.alteration.sharp", true),
             ("Ligadura", "inspector.tie.toggle", true),
         ]));
-        stack.Children.Add(CreateLabel("Estilo", 17, FontWeight.SemiBold));
-        stack.Children.Add(CreateLabel("Ajustes de la partitura", 13));
+        stack.Children.Add(_inspectorEditors);
         return new Border { Width = 240, Child = new ScrollViewer { Content = stack } };
+    }
+
+    private Control CreateInspectorPitchButtons()
+    {
+        (Step Step, string Name)[] pitches =
+        [
+            (Step.C, "Do"), (Step.D, "Re"), (Step.E, "Mi"), (Step.F, "Fa"),
+            (Step.G, "Sol"), (Step.A, "La"), (Step.B, "Si"),
+        ];
+        WrapPanel row = new() { Orientation = Orientation.Horizontal };
+        foreach ((Step step, string name) in pitches)
+        {
+            string actionId = $"inspector.pitch.{step.ToString().ToLowerInvariant()}";
+            Button button = CreateButton(name, $"Cambiar la nota seleccionada a {name}", actionId, false);
+            button.MinWidth = 28;
+            button.Padding = new Thickness(3, 2);
+            _inspectorPitchButtons.Add((button, step));
+            row.Children.Add(button);
+        }
+
+        return row;
     }
 
     private Control CreateInspectorButtonRow((string Label, string ActionId, bool RequiresNote)[] items)
@@ -656,36 +941,30 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         }
     }
 
+    private void ToggleMore() => TogglePopup(_morePopup);
+
+    private void CloseMenus()
+    {
+        if (_filePopup is not null) _filePopup.IsOpen = false;
+        if (_viewSelectorPopup is not null) _viewSelectorPopup.IsOpen = false;
+        if (_durationSelectorPopup is not null) _durationSelectorPopup.IsOpen = false;
+        if (_morePopup is not null) _morePopup.IsOpen = false;
+    }
+
     private void Execute(string actionId)
     {
         if (_actions?.TryExecute(actionId) == true)
         {
-            if (actionId is "file.open-menu" or "edit.open-menu" or "view.open-menu" or "view.open-selector")
+            if (actionId is "file.open-menu" or "edit.open-menu" or "view.open-menu" or
+                "view.open-selector" or "score.duration.open-selector" or "view.more")
             {
                 return;
             }
 
-            if (_fileMenuPopup is not null)
-            {
-                _fileMenuPopup.IsOpen = false;
-            }
+            CloseMenus();
 
-            if (_editMenuPopup is not null)
-            {
-                _editMenuPopup.IsOpen = false;
-            }
-
-            if (_viewMenuPopup is not null)
-            {
-                _viewMenuPopup.IsOpen = false;
-            }
-
-            if (_viewSelectorPopup is not null)
-            {
-                _viewSelectorPopup.IsOpen = false;
-            }
-
-            if (!actionId.StartsWith("text.", StringComparison.Ordinal))
+            if (actionId is not "file.new" and not "file.open" &&
+                !actionId.StartsWith("text.", StringComparison.Ordinal))
             {
                 Canvas.Focus();
             }
@@ -723,13 +1002,14 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     {
         CurrentView = view;
         CurrentPart = part;
-        ViewSelectorButton.Content = view switch
+        SetToolbarContent("view.open-selector", "▤", view switch
         {
-            ScoreViewMode.Page => "Página ▾",
+            ScoreViewMode.Page => "Una página ▾",
             ScoreViewMode.Continuous => "Continua ▾",
             ScoreViewMode.Part => $"{part?.Name ?? "Parte"} ▾",
             _ => throw new ArgumentOutOfRangeException(nameof(view)),
-        };
+        });
+        UpdateToolbarState(_input.SelectedEventProperties);
         ViewChanged?.Invoke(view, part);
         Canvas.Focus();
     }
@@ -804,6 +1084,11 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             surface.BorderBrush = new SolidColorBrush(border);
         }
 
+        foreach (Border separator in _toolbarSeparators)
+        {
+            separator.BorderBrush = new SolidColorBrush(border);
+        }
+
         foreach (Control control in _themedControls)
         {
             switch (control)
@@ -817,6 +1102,8 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             }
         }
 
+        UpdateToolbarState(_input.SelectedEventProperties);
+
         Canvas.WorkspaceColor = _isDarkTheme
             ? new SKColor(47, 52, 61)
             : new SKColor(222, 225, 230);
@@ -827,18 +1114,9 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private void UpdateStatus()
     {
         bool writing = _input.Mode == ScoreInputMode.NoteEntry;
-        NoteEntryButton.Content = writing ? "✓ Escribiendo notas" : "Escribir notas";
-        NoteEntryButton.FontWeight = writing ? FontWeight.Bold : FontWeight.Normal;
         _entryGuide.Text = writing
-            ? "Haz clic en el pentagrama para colocar una nota o pulsa C D E F G A B. Esc termina."
-            : "Para empezar: pulsa «Escribir notas» y haz clic en el pentagrama.";
-        foreach ((Button button, NoteValue value) in _entryDurationButtons)
-        {
-            button.FontWeight = writing && _input.CurrentDuration.Value == value
-                ? FontWeight.Bold : FontWeight.Normal;
-            button.Opacity = writing ? 1 : 0.55;
-            button.IsEnabled = writing;
-        }
+            ? "Haz clic en el pentagrama para colocar una nota; C D E F G A B también funcionan. Esc selecciona."
+            : "Para empezar, elige Nota y haz clic en el pentagrama; también puedes escribir C D E F G A B.";
 
         ScoreInputCursor cursor = _input.Cursor;
         Score score = _input.CurrentScore;
@@ -884,18 +1162,35 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             $"Compás {displayedMeasure}  ·  Tiempo {beatNumber}  ·  " +
             $"Selección: {selectedCount}";
         _inspectorText.Text = properties is null
-            ? selectedCount == 0 ? "Selecciona un elemento" : "Selecciona un elemento individual"
+            ? selectedCount == 0 ? "Sin selección" : "Selección múltiple"
             : $"{properties.Kind}  ·  Compás {properties.MeasureNumber}  ·  Voz {properties.VoiceNumber}";
         _inspectorDetails.Text = properties is null
-            ? string.Empty
+            ? selectedCount == 0
+                ? "Para editar una nota o un silencio, haz clic sobre el pentagrama."
+                : "Selecciona una sola nota para editar su duración o alteración."
             : FormatEventProperties(properties);
         bool hasSelection = properties is not null;
+        _inspectorEditors.IsVisible = hasSelection;
         bool hasSelectedNote = properties is { HasSelectedNote: true };
         foreach ((Button button, bool requiresNote) in _inspectorButtons)
         {
             button.IsEnabled = hasSelection && (!requiresNote || hasSelectedNote);
             button.Opacity = button.IsEnabled ? 1 : 0.45;
         }
+
+        Step? selectedStep = hasSelectedNote ? properties!.Notes[0].Pitch.Step : null;
+        foreach ((Button button, Step step) in _inspectorPitchButtons)
+        {
+            button.IsEnabled = hasSelectedNote;
+            button.Opacity = hasSelectedNote ? 1 : 0.45;
+            button.FontWeight = selectedStep == step ? FontWeight.Bold : FontWeight.Normal;
+            button.Background = selectedStep == step
+                ? new SolidColorBrush(Color.Parse("#176DB0")) : null;
+            button.Foreground = selectedStep == step || _isDarkTheme
+                ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Color.Parse("#202834"));
+        }
+
+        UpdateToolbarState(properties);
     }
 
     private static string FormatEventProperties(ScoreEventProperties properties)
@@ -968,6 +1263,26 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         };
         return $"{step}{alteration} {pitch.Octave}";
     }
+
+    private static string GetDurationLabel(NoteValue value) => value switch
+    {
+        NoteValue.Whole => "Redonda",
+        NoteValue.Half => "Blanca",
+        NoteValue.Quarter => "Negra",
+        NoteValue.Eighth => "Corchea",
+        NoteValue.Sixteenth => "Semicorchea",
+        _ => value.ToString(),
+    };
+
+    private static string GetDurationIcon(NoteValue value) => value switch
+    {
+        NoteValue.Whole => "○",
+        NoteValue.Half => "○│",
+        NoteValue.Quarter => "♩",
+        NoteValue.Eighth => "♪",
+        NoteValue.Sixteenth => "♫",
+        _ => "♪",
+    };
 
     private void ToggleSelectedDot()
     {

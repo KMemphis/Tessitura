@@ -33,7 +33,7 @@ internal sealed class EditorSession : IDisposable
 
     public EditorSession(Window window, SmuflMetadata metadata, string assetsPath,
         string settingsPath, string recoveryDirectory, RecentScores recents, Score score, string? path,
-        Action closeToStart)
+        Action closeToStart, Func<Task>? openScoreRequested = null)
     {
         _window = window;
         _metadata = metadata;
@@ -43,7 +43,7 @@ internal sealed class EditorSession : IDisposable
         _style = Style.CreateDefault(metadata);
         _input = new ScoreInputController(score);
         _canvas = new ScoreCanvas { ScoreInputController = _input };
-        Shell = new ScoreWindowShell(_canvas, _input);
+        Shell = new ScoreWindowShell(_canvas, _input, closeToStart, openScoreRequested);
         _updates = new ScoreUpdateCoordinator(_input, metadata,
             Path.Combine(assetsPath, "Bravura.otf"),
             postToUi: action => Dispatcher.UIThread.Post(action));
@@ -75,7 +75,13 @@ internal sealed class EditorSession : IDisposable
         _realtimeRecorder = new MidiRealtimeRecorder(_input);
         _playhead.Tick += (_, _) =>
         {
+            bool wasPlaying = _playback.IsPlaying;
             _playback.Tick();
+            if (wasPlaying != _playback.IsPlaying)
+            {
+                Shell.SetPlaybackState(_playback.IsPlaying);
+            }
+
             _stepInput.Tick(Environment.TickCount64);
         };
         _midi.MessageReceived += message =>
@@ -180,7 +186,7 @@ internal sealed class EditorSession : IDisposable
         catch (Exception exception) when (exception is IOException or InvalidOperationException or NotSupportedException)
         {
             output?.Dispose();
-            _window.Title = $"Tessitura — no se pudo iniciar la grabación: {exception.Message}";
+            Shell.ShowNotice($"No se pudo iniciar la grabación MIDI: {exception.Message}", true);
         }
     }
 
@@ -204,10 +210,16 @@ internal sealed class EditorSession : IDisposable
         try
         {
             action();
+            Shell.SetPlaybackState(_playback.IsPlaying);
+            Shell.ClearNotice();
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException)
         {
-            _window.Title = $"Tessitura — no se puede reproducir: {exception.Message}";
+            Shell.SetPlaybackState(false);
+            string message = exception is FileNotFoundException
+                ? "No se encuentran los sonidos incluidos. Reinstala Tessitura y vuelve a intentarlo."
+                : $"No se pudo reproducir. Comprueba la salida de audio. Detalle: {exception.Message}";
+            Shell.ShowNotice(message, true);
         }
     }
 
@@ -247,10 +259,11 @@ internal sealed class EditorSession : IDisposable
             string textFont = Path.Combine(_assetsPath, "NotoSerif[wdth,wght].ttf");
             await Task.Run(() => ScorePdfExport.Export(target, score, _style, _metadata, musicFont,
                 File.Exists(textFont) ? textFont : null));
+            Shell.ShowNotice($"PDF exportado: {Path.GetFileName(target)}", false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _window.Title = $"Tessitura — no se pudo exportar: {exception.Message}";
+            Shell.ShowNotice($"No se pudo exportar el PDF: {exception.Message}", true);
         }
     }
 
@@ -278,10 +291,11 @@ internal sealed class EditorSession : IDisposable
             _path = target;
             _recents.Add(target, _input.CurrentScore.Metadata.Title, DateTimeOffset.Now);
             _autosave.Discard();
+            Shell.ShowNotice($"Partitura guardada: {Path.GetFileName(target)}", false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _window.Title = $"Tessitura — no se pudo guardar: {exception.Message}";
+            Shell.ShowNotice($"No se pudo guardar la partitura: {exception.Message}", true);
         }
     }
 }

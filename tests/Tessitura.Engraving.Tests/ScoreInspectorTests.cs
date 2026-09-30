@@ -93,6 +93,72 @@ public sealed class ScoreInspectorTests
         Assert.Equal(0, Assert.IsType<Chord>(CurrentEvent(input)).Notes[0].Pitch.Alter);
     }
 
+    [Fact]
+    public void PitchButtonsMoveSolToDoAndUndoTheWrittenPitchChange()
+    {
+        Chord chord = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+            new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.G, 1, 4))], StemDirection.Auto);
+        Score original = CreateScore(chord);
+        ScoreInputController input = new(original);
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-inspector-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            input.SelectEvent(chord.Id);
+
+            Assert.Contains("Sol sostenido 4", shell.InspectorDetailsText);
+            Assert.True(actions.TryExecute("inspector.pitch.c"));
+
+            Chord changed = Assert.IsType<Chord>(CurrentEvent(input));
+            Assert.Equal(new Pitch(Step.C, 1, 4), changed.Notes[0].Pitch);
+            Assert.Contains("Do sostenido 4", shell.InspectorDetailsText);
+
+            input.Undo();
+
+            Assert.Equal(original, input.CurrentScore);
+            Assert.Contains("Sol sostenido 4", shell.InspectorDetailsText);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
+    [Fact]
+    public void ToolbarDeleteReplacesSelectedNoteWithRestAndCanBeUndone()
+    {
+        Chord chord = new(new EventId(Guid.NewGuid()), Fraction.Zero,
+            new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Score original = CreateScore(chord);
+        ScoreInputController input = new(original);
+        using ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-delete-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(
+                input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            input.SelectEvent(chord.Id);
+
+            Assert.True(actions.TryExecute("score.delete"));
+            Assert.IsType<Rest>(CurrentEvent(input));
+
+            input.Undo();
+
+            Assert.Equal(original, input.CurrentScore);
+            Assert.Contains("Do 4", shell.InspectorDetailsText);
+        }
+        finally
+        {
+            File.Delete(settings);
+        }
+    }
+
     private static MusicEvent CurrentEvent(ScoreInputController input) =>
         input.CurrentScore.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0];
 

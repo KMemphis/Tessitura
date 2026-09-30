@@ -135,6 +135,50 @@ public sealed class ScoreInputControllerTests
     }
 
     [Fact]
+    public void CommandArrowsMoveTheSelectedNoteByDiatonicStepAndUndo()
+    {
+        Score score = CreateFourNoteScore(out EventId[] eventIds);
+        ScoreInputController input = new(score);
+        using TemporaryShortcutSettings settings = new();
+        ActionRegistry actions = settings.CreateRegistry(input);
+        input.SelectEvent(eventIds[0]);
+
+        Assert.True(actions.TryExecute("score.selection.pitch-up"));
+        Chord raised = Assert.IsType<Chord>(input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+            .Voices[0].Events[0]);
+        Assert.Equal(new Pitch(Step.D, 0, 4), raised.Notes[0].Pitch);
+
+        input.Undo();
+        Assert.Equal(new Pitch(Step.C, 0, 4), Assert.IsType<Chord>(
+            input.CurrentScore.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]).Notes[0].Pitch);
+
+        Assert.True(actions.TryExecute("score.selection.pitch-down"));
+        Chord lowered = Assert.IsType<Chord>(input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+            .Voices[0].Events[0]);
+        Assert.Equal(new Pitch(Step.B, 0, 3), lowered.Notes[0].Pitch);
+    }
+
+    [Fact]
+    public void ShiftCommandArrowsMoveTheSelectedNoteByAnOctave()
+    {
+        Score score = CreateFourNoteScore(out EventId[] eventIds);
+        ScoreInputController input = new(score);
+        using TemporaryShortcutSettings settings = new();
+        ActionRegistry actions = settings.CreateRegistry(input);
+        input.SelectEvent(eventIds[0]);
+
+        Assert.True(actions.TryExecute(Key.Up, KeyModifiers.Meta | KeyModifiers.Shift));
+        Chord raised = Assert.IsType<Chord>(input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+            .Voices[0].Events[0]);
+        Assert.Equal(new Pitch(Step.C, 0, 5), raised.Notes[0].Pitch);
+
+        Assert.True(actions.TryExecute(Key.Down, KeyModifiers.Meta | KeyModifiers.Shift));
+        Chord lowered = Assert.IsType<Chord>(input.CurrentScore.Content[new StaffMeasureKey(0, 0)]
+            .Voices[0].Events[0]);
+        Assert.Equal(new Pitch(Step.C, 0, 4), lowered.Notes[0].Pitch);
+    }
+
+    [Fact]
     public void ShiftSelectionIncludesEventsBetweenMusicalEndpoints()
     {
         Score score = CreateTwoStaffScore(out EventId[] eventIds);

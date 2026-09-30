@@ -11,6 +11,11 @@ namespace Tessitura.App;
 /// <summary>Shows recent scores, templates and the new-score wizard.</summary>
 public sealed class StartScreen : UserControl
 {
+    private const string FirstSteps = "Crea una partitura, pulsa «Escribir notas» y haz clic en el pentagrama. También puedes escribir C D E F G A B.";
+
+    /// <summary>Gets the short first-note instruction visible on the home screen.</summary>
+    public string FirstStepsText => FirstSteps;
+
     private static readonly (string Label, TimeSignature Meter)[] Meters =
     [
         ("2/2", new TimeSignature(2, 2)), ("2/4", new TimeSignature(2, 4)),
@@ -60,7 +65,8 @@ public sealed class StartScreen : UserControl
         {
             Content = new StackPanel
             {
-                Spacing = 18, Margin = new Thickness(40), MaxWidth = 720,
+                Spacing = 18, Margin = new Thickness(40), MaxWidth = 840,
+                HorizontalAlignment = HorizontalAlignment.Center,
                 Children = { _controller.IsWizardOpen ? BuildWizard() : BuildHome() },
             },
         };
@@ -69,14 +75,16 @@ public sealed class StartScreen : UserControl
     private Control BuildHome()
     {
         StackPanel page = new() { Spacing = 16 };
-        page.Children.Add(Label("Tessitura", 30, FontWeight.SemiBold));
-        page.Children.Add(Label("Nueva partitura", 18, FontWeight.SemiBold));
+        page.Children.Add(Label("Tessitura", 34, FontWeight.SemiBold));
+        page.Children.Add(Label("Escribe, escucha y prepara partituras en un solo lugar.", 16));
+        page.Children.Add(Label("Nueva partitura", 20, FontWeight.SemiBold));
         WrapPanel templates = new() { Orientation = Orientation.Horizontal };
-        templates.Children.Add(ActionButton("Piano", "start.template.piano", 150));
-        templates.Children.Add(ActionButton("Cuarteto de cuerda", "start.template.string-quartet", 150));
-        templates.Children.Add(ActionButton("Coro SATB", "start.template.satb", 150));
+        templates.Children.Add(TemplateButton("Piano", "Dos pentagramas", "start.template.piano"));
+        templates.Children.Add(TemplateButton("Cuarteto de cuerda", "Cuatro instrumentos", "start.template.string-quartet"));
+        templates.Children.Add(TemplateButton("Coro SATB", "Cuatro voces", "start.template.satb"));
         page.Children.Add(templates);
-        page.Children.Add(ActionButton("Abrir archivo…", "start.open", 150));
+        page.Children.Add(Label(FirstSteps, 14));
+        page.Children.Add(ActionButton("Abrir partitura .tess…", "start.open", 210));
         page.Children.Add(Label("Recientes", 18, FontWeight.SemiBold));
         if (_controller.Recents.Count == 0)
         {
@@ -158,9 +166,33 @@ public sealed class StartScreen : UserControl
 
     private Button ActionButton(string text, string actionId, double width)
     {
-        Button button = new() { Content = text, Width = width, Margin = new Thickness(0, 0, 8, 8),
+        Button button = new() { Content = new TextBlock { Text = text,
+                TextTrimming = TextTrimming.CharacterEllipsis }, Width = width, Margin = new Thickness(0, 0, 8, 8),
             Padding = new Thickness(10, 8), HorizontalContentAlignment = HorizontalAlignment.Left,
             HorizontalAlignment = HorizontalAlignment.Left };
+        ToolTip.SetTip(button, text);
+        button.Click += (_, _) => _actions?.TryExecute(actionId);
+        Buttons[actionId] = button;
+        return button;
+    }
+
+    private Button TemplateButton(string title, string subtitle, string actionId)
+    {
+        Button button = new()
+        {
+            Content = new StackPanel
+            {
+                Spacing = 7,
+                Children =
+                {
+                    Label(title, 16, FontWeight.SemiBold),
+                    Label(subtitle, 12),
+                },
+            },
+            Width = 225, Height = 90, Margin = new Thickness(0, 0, 10, 10),
+            Padding = new Thickness(14, 10),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+        };
         button.Click += (_, _) => _actions?.TryExecute(actionId);
         Buttons[actionId] = button;
         return button;

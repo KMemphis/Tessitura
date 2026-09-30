@@ -10,6 +10,14 @@ namespace Tessitura.Engraving.Tests;
 
 public sealed class StartScreenTests : IDisposable
 {
+    [Fact]
+    public void StartScreenExplainsHowToWriteTheFirstNote()
+    {
+        (StartScreen screen, _) = CreateScreen(out ActionRegistry _);
+        Assert.Contains("Escribir notas", screen.FirstStepsText);
+        Assert.Contains("pentagrama", screen.FirstStepsText);
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"tessitura-start-{Guid.NewGuid():N}");
 
     public StartScreenTests() => Directory.CreateDirectory(_directory);

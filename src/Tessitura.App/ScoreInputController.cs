@@ -145,6 +145,16 @@ public sealed class ScoreInputController
             () => MoveCursorStaff(1)));
         actions.Add(new ActionDefinition("score.cursor.start", "Cursor al inicio de la partitura", "Ctrl+Home",
             MoveCursorToStart));
+        actions.Add(new ActionDefinition("score.selection.pitch-up", "Subir la nota seleccionada", "Meta+Up",
+            () => TransposeSelectedPitchDiatonic(1)));
+        actions.Add(new ActionDefinition("score.selection.pitch-down", "Bajar la nota seleccionada", "Meta+Down",
+            () => TransposeSelectedPitchDiatonic(-1)));
+        actions.Add(new ActionDefinition("score.selection.octave-up", "Subir una octava la nota seleccionada", "Meta+Shift+Up",
+            () => TransposeSelectedPitchDiatonic(7)));
+        actions.Add(new ActionDefinition("score.selection.octave-down", "Bajar una octava la nota seleccionada", "Meta+Shift+Down",
+            () => TransposeSelectedPitchDiatonic(-7)));
+        actions.Add(new ActionDefinition("score.delete", "Borrar la nota seleccionada", "Delete",
+            () => DeleteSelectedNote()));
         (ArticulationKind Kind, string Name, string Shortcut)[] marks =
         [
             (ArticulationKind.Staccato, "staccato", "Alt+S"), (ArticulationKind.Staccatissimo, "staccatissimo", "Alt+Shift+S"),
@@ -439,6 +449,58 @@ public sealed class ScoreInputController
     /// <returns>Whether a selected event was changed.</returns>
     public bool ChangeSelectedDuration(Duration duration) =>
         ApplySelectedEvent(properties => new ChangeDurationCommand(properties.EventId, duration));
+
+    /// <summary>Changes the letter name of the single selected note while preserving its octave and alteration.</summary>
+    /// <param name="step">The new natural note name.</param>
+    /// <returns>Whether a selected note was changed.</returns>
+    public bool ChangeSelectedPitchStep(Step step)
+    {
+        if (!Enum.IsDefined(step))
+        {
+            throw new ArgumentOutOfRangeException(nameof(step));
+        }
+
+        return TransformSelectedPitch(pitch => new Pitch(step, pitch.Alter, pitch.Octave));
+    }
+
+    /// <summary>Moves the single selected note by one or more diatonic staff steps.</summary>
+    /// <param name="steps">The signed number of letter-name steps.</param>
+    /// <returns>Whether a selected note was changed.</returns>
+    public bool TransposeSelectedPitchDiatonic(int steps)
+    {
+        if (steps == 0)
+        {
+            return false;
+        }
+
+        return TransformSelectedPitch(pitch =>
+        {
+            int diatonicIndex = checked(pitch.Octave * 7 + (int)pitch.Step + steps);
+            int octave = Math.DivRem(diatonicIndex, 7, out int stepIndex);
+            if (stepIndex < 0)
+            {
+                octave--;
+                stepIndex += 7;
+            }
+
+            return new Pitch((Step)stepIndex, pitch.Alter, octave);
+        });
+    }
+
+    /// <summary>Replaces the single selected note with a rest using the undoable score command.</summary>
+    /// <returns>Whether a selected note was deleted.</returns>
+    public bool DeleteSelectedNote()
+    {
+        if (!TryGetSelectedNote(out SelectionItem item, out EventLocation location,
+                out Chord chord, out int noteIndex))
+        {
+            return false;
+        }
+
+        Apply(new DeleteNoteCommand(item.EventId, noteIndex), location.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
 
     /// <summary>Changes the dot count of the single selected score event.</summary>
     /// <param name="dotCount">The number of augmentation dots.</param>
@@ -1125,6 +1187,55 @@ public sealed class ScoreInputController
         EventLocation location = FindEventLocation(selected.EventId);
         Apply(createCommand(selected), location.Context, CurrentSelection);
         NotifyStateChanged();
+        return true;
+    }
+
+    private bool TransformSelectedPitch(Func<Pitch, Pitch> transform)
+    {
+        if (!TryGetSelectedNote(out SelectionItem item, out EventLocation location,
+                out Chord chord, out int noteIndex))
+        {
+            return false;
+        }
+
+        Pitch current = chord.Notes[noteIndex].Pitch;
+        Pitch changed = transform(current);
+        if (changed == current)
+        {
+            return false;
+        }
+
+        Apply(new ChangePitchCommand(item.EventId, noteIndex, changed), location.Context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
+
+    private bool TryGetSelectedNote(out SelectionItem item, out EventLocation location,
+        out Chord chord, out int noteIndex)
+    {
+        item = default;
+        location = default;
+        chord = null!;
+        noteIndex = -1;
+        if (CurrentSelection.Items.Length != 1)
+        {
+            return false;
+        }
+
+        item = CurrentSelection.Items[0];
+        location = FindEventLocation(item.EventId);
+        if (location.Event is not Chord selectedChord)
+        {
+            return false;
+        }
+
+        noteIndex = item.NoteIndex ?? (selectedChord.Notes.Length == 1 ? 0 : -1);
+        if (noteIndex < 0)
+        {
+            return false;
+        }
+
+        chord = selectedChord;
         return true;
     }
 

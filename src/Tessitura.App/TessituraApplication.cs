@@ -105,7 +105,36 @@ public sealed class TessituraApplication : Application
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
-            _window.Title = $"Tessitura — no se pudo abrir: {exception.Message}";
+            string message = $"No se pudo abrir {Path.GetFileName(path)}: {exception.Message}";
+            if (_session is not null)
+            {
+                _session.Shell.ShowNotice(message, true);
+            }
+            else
+            {
+                _window.Title = $"Tessitura — {message}";
+            }
+        }
+    }
+
+    private async Task OpenFileFromEditorAsync()
+    {
+        try
+        {
+            IReadOnlyList<IStorageFile> files = await _window.StorageProvider.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    AllowMultiple = false,
+                    FileTypeFilter = [new FilePickerFileType("Partitura Tessitura") { Patterns = ["*.tess"] }],
+                });
+            if (files.Count == 1 && files[0].TryGetLocalPath() is string path)
+            {
+                OpenPath(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _session?.Shell.ShowNotice($"No se pudo abrir la partitura: {exception.Message}", true);
         }
     }
 
@@ -114,7 +143,7 @@ public sealed class TessituraApplication : Application
         _session?.Dispose();
         _session = new EditorSession(_window, _metadata, _assets,
             Path.Combine(_dataDirectory, "shortcuts.json"), Path.Combine(_dataDirectory, "recovery"),
-            _recents, score, path, ShowStart);
+            _recents, score, path, ShowStart, OpenFileFromEditorAsync);
         _window.Title = "Tessitura";
         _window.Content = _session.Shell;
         _session.Focus();
