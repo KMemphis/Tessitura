@@ -77,7 +77,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F3.7 · Cabeza de reproducción.** Transporte, `Espacio`, cursor sincronizado con el reloj de audio y seguimiento de la vista. *Hecho cuando:* el desfase entre cursor y sonido es inferior a un fotograma.
 - [x] **F3.8 · Mezclador.** Volumen, panorama, silencio y solo por instrumento, y programa General MIDI automático. *Hecho cuando:* cada control actúa en tiempo real.
 - [ ] **F3.9 · MIDI de dispositivos.** Salida MIDI externa y entrada MIDI paso a paso con `IMidiPort`, usando DryWetMIDI en Windows/macOS y un adaptador ALSA en Linux. *Hecho cuando:* un teclado MIDI escribe acordes en el modo de entrada y se comprueban enumeración, recepción, envío y desconexión con dispositivos físicos en Windows y Linux.
-- [ ] **F3.10 · Exportación SVG y PNG.** `SKSvgCanvas` y `SKSurface` con resolución elegible. *Hecho cuando:* ambas coinciden con el PDF en las imágenes de referencia.
+- [x] **F3.10 · Exportación SVG y PNG.** `SKSvgCanvas` y `SKSurface` con resolución elegible. *Hecho cuando:* ambas coinciden con el PDF en las imágenes de referencia.
 
 **Puerta F3:** 90 % del corpus MusicXML de ida y vuelta sin pérdidas, y la partitura de referencia suena con el cursor sincronizado.
 
