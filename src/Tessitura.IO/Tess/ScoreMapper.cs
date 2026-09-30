@@ -58,6 +58,8 @@ internal static class ScoreMapper
                 TextAttachment x => new AttachmentDto("text", x.Target.Value, 0, Text: x.Text),
                 ChordSymbolAttachment c => new AttachmentDto("chord", c.Target.Value, (int)c.Root, c.RootAlter, Text: c.Quality,
                     Value3: c.BassAlter, Value4: c.Bass is Step bass ? (int)bass : -1),
+                LyricAttachment l => new AttachmentDto("lyric", l.Target.Value, (int)l.Syllabic, (int)l.Extender,
+                    Text: l.Text, Value3: l.Verse),
                 _ => throw new InvalidOperationException($"Attachment {attachment.GetType().Name} cannot be saved."),
             });
         }
@@ -166,6 +168,8 @@ internal static class ScoreMapper
             "text" => new TextAttachment(new EventId(a.Target), a.Text ?? ""),
             "chord" => new ChordSymbolAttachment(new EventId(a.Target), (Step)a.Value, a.Value2, a.Text ?? "",
                 a.Value4 >= 0 ? (Step)a.Value4 : null, a.Value3),
+            "lyric" => new LyricAttachment(new EventId(a.Target), a.Value3, a.Text ?? "",
+                (LyricSyllabic)a.Value, (LyricExtender)a.Value2),
             _ => throw new InvalidDataException($"Unknown attachment kind '{a.Kind}'."),
         })];
         return new Score(new ScoreMetadata(dto.Title, dto.Composer), instruments.ToImmutable(),

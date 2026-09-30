@@ -75,4 +75,24 @@ public sealed class TextEntryParserTests
     [Fact]
     public void ChordSymbolDisplayUsesProperAccidentals() =>
         Assert.Equal("F♯m7/A", new ChordSymbolAttachment(Target, Step.F, 1, "m7", Step.A).Display);
+
+    [Theory]
+    [InlineData("1:glo-", 1, "glo", LyricSyllabic.Begin, LyricExtender.None)]
+    [InlineData("3:aleluya", 3, "aleluya", LyricSyllabic.Single, LyricExtender.None)]
+    [InlineData("2:melisma~", 2, "melisma", LyricSyllabic.Single, LyricExtender.Start)]
+    [InlineData("1:~>", 1, "", LyricSyllabic.Single, LyricExtender.Continue)]
+    [InlineData("1:~", 1, "", LyricSyllabic.Single, LyricExtender.Stop)]
+    public void LyricEntriesPreserveVerseSyllableAndExtender(
+        string text, int verse, string syllable, LyricSyllabic syllabic, LyricExtender extender)
+    {
+        Assert.True(TextEntryParser.TryParse(text, TextEntryKind.Lyric, Target, out Attachment? attachment));
+        Assert.Equal(new LyricAttachment(Target, verse, syllable, syllabic, extender), attachment);
+    }
+
+    [Theory]
+    [InlineData("0:la")]
+    [InlineData("1:")]
+    [InlineData("x:la")]
+    public void InvalidLyricEntriesAreRejected(string text) =>
+        Assert.False(TextEntryParser.TryParse(text, TextEntryKind.Lyric, Target, out _));
 }

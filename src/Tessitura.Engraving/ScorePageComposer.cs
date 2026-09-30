@@ -132,6 +132,8 @@ public sealed class ScorePageComposer
         double pageHeight = PageHeightPoints / staffSpace;
         double leftMargin = HorizontalMarginPoints / staffSpace;
         double topMargin = VerticalMarginPoints / staffSpace;
+        Dictionary<EventId, List<Attachment>> attachmentIndex = BuildAttachmentIndex(score);
+        ImmutableArray<LyricAnchor> lyricAnchors = BuildLyricAnchors(score, attachmentIndex);
         TimeSignature firstMeter = score.Measures[system.Range.StartIndex].TimeSignature;
         int staffCount = CountStaves(score);
         SystemHeaderLayout header = BuildSystemHeader(score, system.Range.StartIndex, staffCount);
@@ -147,7 +149,8 @@ public sealed class ScorePageComposer
             try
             {
                 verticalLayout = BuildVerticalLayout(layout.Systems, staffCount, pageHeight, topMargin,
-                    MeasureExtents(score, layout, verticalLayout, staffCount, placer, leftMargin, cancellationToken));
+                    MeasureExtents(score, layout, verticalLayout, staffCount, placer, leftMargin,
+                        attachmentIndex, lyricAnchors, cancellationToken));
             }
             catch (InvalidOperationException)
             {
@@ -156,7 +159,7 @@ public sealed class ScorePageComposer
         }
 
         int pageNumber = verticalLayout.Systems[systemIndex].PageNumber;
-        SystemState state = new(BuildAttachmentIndex(score));
+        SystemState state = new(attachmentIndex, lyricAnchors);
 
         for (int pageSystemIndex = 0; pageSystemIndex < layout.Systems.Length; pageSystemIndex++)
         {
@@ -193,7 +196,9 @@ public sealed class ScorePageComposer
         double systemWidth = Sum(measureWidths);
         double musicEndX = musicStartX + systemWidth;
         state.Geometry.Clear();
+        state.EventX.Clear();
         state.Annotations.Clear();
+        state.LyricTexts.Clear();
         int systemFirstPrimitive = primitives.Count;
         for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
         {
@@ -240,6 +245,7 @@ public sealed class ScorePageComposer
 
         AddLines(primitives, score, state, musicStartX, musicEndX);
         ResolveAnnotations(primitives, state, systemFirstPrimitive);
+        DrawLyricConnectors(primitives, score, pageSystem, placement, state, musicStartX, musicEndX);
         AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
         DrawRepeatAnnotations(primitives, score, pageSystem, placement,
             measureWidths, musicStartX, staffCount);
@@ -327,6 +333,102 @@ public sealed class ScorePageComposer
             x = measureEnd;
             local++;
         }
+    }
+
+    private void DrawLyricConnectors(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        Score score, SystemLine system, SystemVerticalPlacement placement, SystemState state,
+        double musicStartX, double musicEndX)
+    {
+        // Behind Bars, Text > Lyrics: hyphens join syllables and extender lines sustain a syllable.
+        ImmutableArray<LyricAnchor> anchors = state.LyricAnchors;
+
+        int systemStart = system.Range.StartIndex;
+        int systemEnd = systemStart + system.Range.Count;
+        // SMuFL engravingDefaults.lyricLineThickness controls lyric extender strokes.
+        double extenderThickness = _metadata.GetEngravingDefault("lyricLineThickness");
+        for (int index = 0; index < anchors.Length; index++)
+        {
+            LyricAnchor anchor = anchors[index];
+            LyricAttachment lyric = anchor.Lyric;
+            if ((lyric.Syllabic is LyricSyllabic.Begin or LyricSyllabic.Middle) &&
+                state.LyricTexts.TryGetValue(new LyricKey(anchor.Event, lyric.Verse), out DisplayLists.Text? currentText))
+            {
+                LyricAnchor? nextSyllable = FindLyricAnchor(anchors, index + 1, anchor, lyric.Verse,
+                    static candidate => !string.IsNullOrEmpty(candidate.Text));
+                double hyphenX;
+                if (nextSyllable is LyricAnchor next &&
+                    state.LyricTexts.TryGetValue(new LyricKey(next.Event, lyric.Verse), out DisplayLists.Text? nextText))
+                {
+                    hyphenX = (currentText.Bounds.X + currentText.Bounds.Width + nextText.Bounds.X) / 2 - 0.35;
+                }
+                else
+                {
+                    hyphenX = musicEndX - 0.8;
+                }
+
+                AddText(primitives, new ElementId(anchor.Event.Value), "-", hyphenX,
+                    currentText.Origin.Y, 2.2);
+                state.StaffByPrimitive[primitives[^1]] = anchor.Staff;
+            }
+
+            if (lyric.Extender != LyricExtender.Start)
+            {
+                continue;
+            }
+
+            LyricAnchor? stop = FindLyricAnchor(anchors, index + 1, anchor, lyric.Verse,
+                static candidate => candidate.Extender == LyricExtender.Stop);
+            if (stop is not LyricAnchor end || anchor.MeasureIndex >= systemEnd || end.MeasureIndex < systemStart)
+            {
+                continue;
+            }
+
+            bool hasStart = anchor.MeasureIndex >= systemStart;
+            bool hasEnd = end.MeasureIndex < systemEnd;
+            double lineStart;
+            double baseline;
+            if (hasStart && state.LyricTexts.TryGetValue(new LyricKey(anchor.Event, lyric.Verse), out DisplayLists.Text? startText))
+            {
+                lineStart = startText.Bounds.X + startText.Bounds.Width + 0.25;
+                baseline = startText.Origin.Y;
+            }
+            else
+            {
+                lineStart = musicStartX;
+                baseline = placement.StaffTops[anchor.Staff] + 10.5 + (lyric.Verse - 1) * 3.2;
+            }
+
+            double lineEnd = hasEnd && state.EventX.TryGetValue(end.Event, out double endX)
+                ? endX - 0.25 : musicEndX;
+            double lineY = baseline + 0.65;
+            if (lineEnd - lineStart < 0.35)
+            {
+                continue;
+            }
+
+            DisplayLine extenderLine = new(new ElementId(anchor.Event.Value),
+                new DisplayBox(lineStart, lineY - extenderThickness / 2,
+                    lineEnd - lineStart, extenderThickness),
+                new DisplayPoint(lineStart, lineY), new DisplayPoint(lineEnd, lineY), extenderThickness);
+            primitives.Add(extenderLine);
+            state.StaffByPrimitive[extenderLine] = anchor.Staff;
+        }
+    }
+
+    private static LyricAnchor? FindLyricAnchor(ImmutableArray<LyricAnchor> anchors, int start,
+        LyricAnchor source, int verse, Func<LyricAttachment, bool> predicate)
+    {
+        for (int index = start; index < anchors.Length; index++)
+        {
+            LyricAnchor candidate = anchors[index];
+            if (candidate.Staff == source.Staff && candidate.Voice == source.Voice &&
+                candidate.Lyric.Verse == verse && predicate(candidate.Lyric))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static string RepeatJumpLabel(RepeatJump jump) => jump switch
@@ -430,6 +532,7 @@ public sealed class ScorePageComposer
         SystemState articulations, int staffIndex, CancellationToken cancellationToken)
     {
         articulations.CurrentStaff = staffIndex;
+        articulations.CurrentMeasureIndex = measureIndex;
         AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
             out (int Voice, EventId Event, int Note)[] order);
         PackColumns(articulations, staffMeasure, score.Measures[measureIndex].TimeSignature.Length, measureStartX, measureWidth,
@@ -440,6 +543,7 @@ public sealed class ScorePageComposer
             score.Measures[measureIndex].TimeSignature.Length.Den;
         foreach (Voice voice in staffMeasure.Voices)
         {
+            articulations.CurrentVoiceNumber = voice.Number;
             // Behind Bars, Multiple Voices: odd voices take up-stems, even voices down-stems.
             StemDirection? voiceStem = manyVoices
                 ? (voice.Number % 2 == 1 ? StemDirection.Up : StemDirection.Down)
@@ -471,6 +575,7 @@ public sealed class ScorePageComposer
         double x = articulations.ColumnX.TryGetValue(position, out double packed)
             ? packed
             : measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
+        articulations.EventX[leaf.Id] = x;
         AddAnnotations(primitives, leaf.Id, x, staffTop, articulations);
         if (leaf is Rest rest)
         {
@@ -603,7 +708,7 @@ public sealed class ScorePageComposer
 
         bool stemUp = chord.Duration.Value != NoteValue.Whole && StaffElementPlacer.ChooseStem(lowest, highest, voiceStem) == StemDirection.Up;
         state.Geometry[chord.Id] = new EventGeometry(centerX, staffTop + 4 - highest * 0.5 - 0.5, staffTop + 4 - lowest * 0.5 + 0.5,
-            stemUp, state.CurrentStaff, staffTop);
+            stemUp, state.CurrentStaff, state.CurrentVoiceNumber, state.CurrentMeasureIndex, staffTop);
     }
 
     private static Dictionary<EventId, List<Attachment>> BuildAttachmentIndex(Score score)
@@ -621,6 +726,65 @@ public sealed class ScorePageComposer
         }
 
         return index;
+    }
+
+    private static ImmutableArray<LyricAnchor> BuildLyricAnchors(Score score,
+        Dictionary<EventId, List<Attachment>> attachments)
+    {
+        if (score.AttachmentList.IsEmpty)
+        {
+            return ImmutableArray<LyricAnchor>.Empty;
+        }
+
+        bool hasLyrics = false;
+        foreach (Attachment attachment in score.AttachmentList)
+        {
+            if (attachment is LyricAttachment)
+            {
+                hasLyrics = true;
+                break;
+            }
+        }
+
+        if (!hasLyrics)
+        {
+            return ImmutableArray<LyricAnchor>.Empty;
+        }
+
+        ImmutableArray<LyricAnchor>.Builder anchors = ImmutableArray.CreateBuilder<LyricAnchor>();
+        int staffCount = CountStaves(score);
+        for (int measureIndex = 0; measureIndex < score.Measures.Length; measureIndex++)
+        {
+            for (int staff = 0; staff < staffCount; staff++)
+            {
+                if (!score.Content.TryGetValue(new StaffMeasureKey(staff, measureIndex), out StaffMeasure? measure))
+                {
+                    continue;
+                }
+
+                foreach (Voice voice in measure.Voices)
+                {
+                    foreach ((MusicEvent musicEvent, _, _) in voice.Events.Flatten())
+                    {
+                        if (!attachments.TryGetValue(musicEvent.Id, out List<Attachment>? attached))
+                        {
+                            continue;
+                        }
+
+                        foreach (Attachment attachment in attached)
+                        {
+                            if (attachment is LyricAttachment lyric)
+                            {
+                                anchors.Add(new LyricAnchor(musicEvent.Id, measureIndex, staff,
+                                    voice.Number, lyric));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return anchors.ToImmutable();
     }
 
     // Behind Bars, Slurs: the curve goes on the notehead side, opposite the stems, and above when stems differ;
@@ -857,6 +1021,10 @@ public sealed class ScorePageComposer
                 primitives.Add(placed);
                 own.Add(placed.Bounds);
                 state.StaffByPrimitive[placed] = group.StaffIndex;
+                if (group.Lyric is LyricKey lyricKey && placed is DisplayLists.Text lyricText)
+                {
+                    state.LyricTexts[lyricKey] = lyricText;
+                }
             }
         }
     }
@@ -1023,6 +1191,11 @@ public sealed class ScorePageComposer
                 case ChordSymbolAttachment chord:
                     AddText(primitives, id, chord.Display, x, staffTop - 2.2, 2.8);
                     break;
+                case LyricAttachment lyric when !string.IsNullOrEmpty(lyric.Text):
+                    // Behind Bars, Text > Lyrics: place each verse below the vocal staff in its own row.
+                    AddText(primitives, id, lyric.Text, centerX,
+                        staffTop + 10.5 + (lyric.Verse - 1) * 3.2, 2.2);
+                    break;
                 case TextAttachment text:
                     AddText(primitives, id, text.Text, x, staffTop + 10.5, 2.6);
                     break;
@@ -1036,9 +1209,13 @@ public sealed class ScorePageComposer
                     DynamicAttachment => (false, 0),
                     TempoAttachment => (true, 1),
                     ChordSymbolAttachment => (true, 0),
+                    LyricAttachment => (false, 2),
                     _ => (false, 2),
                 };
-                attachments.Annotations.Add(new AnnotationGroup(primitives.ToImmutable(), above, priority, attachments.CurrentStaff));
+                LyricKey? lyricKey = attachment is LyricAttachment lyric
+                    ? new LyricKey(lyric.Target, lyric.Verse) : null;
+                attachments.Annotations.Add(new AnnotationGroup(primitives.ToImmutable(), above, priority,
+                    attachments.CurrentStaff, lyricKey));
             }
         }
     }
@@ -1130,15 +1307,32 @@ public sealed class ScorePageComposer
         }
     }
 
-    private readonly record struct EventGeometry(double CenterX, double TopY, double BottomY, bool StemUp, int StaffIndex, double StaffTop);
+    private readonly record struct EventGeometry(double CenterX, double TopY, double BottomY,
+        bool StemUp, int StaffIndex, int VoiceNumber, int MeasureIndex, double StaffTop);
 
-    private sealed class SystemState(Dictionary<EventId, List<Attachment>> attachments)
+    private readonly record struct LyricKey(EventId Event, int Verse);
+
+    private readonly record struct LyricAnchor(EventId Event, int MeasureIndex, int Staff,
+        int Voice, LyricAttachment Lyric);
+
+    private sealed class SystemState(Dictionary<EventId, List<Attachment>> attachments,
+        ImmutableArray<LyricAnchor> lyricAnchors)
     {
         public Dictionary<EventId, List<Attachment>> Attachments { get; } = attachments;
 
+        public ImmutableArray<LyricAnchor> LyricAnchors { get; } = lyricAnchors;
+
         public Dictionary<EventId, EventGeometry> Geometry { get; } = [];
 
+        public Dictionary<EventId, double> EventX { get; } = [];
+
+        public Dictionary<LyricKey, DisplayLists.Text> LyricTexts { get; } = [];
+
         public int CurrentStaff { get; set; }
+
+        public int CurrentVoiceNumber { get; set; }
+
+        public int CurrentMeasureIndex { get; set; }
 
         // Horizontal position of each rhythmic column of the staff measure being drawn.
         public Dictionary<Fraction, double> ColumnX { get; } = [];
@@ -1149,7 +1343,8 @@ public sealed class ScorePageComposer
         public Dictionary<DrawingPrimitive, int> StaffByPrimitive { get; } = new(ReferenceEqualityComparer.Instance);
     }
 
-    private sealed record AnnotationGroup(ImmutableArray<DrawingPrimitive> Items, bool Above, int Priority, int StaffIndex);
+    private sealed record AnnotationGroup(ImmutableArray<DrawingPrimitive> Items, bool Above,
+        int Priority, int StaffIndex, LyricKey? Lyric = null);
 
     private static DisplayLine BracketLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>
         new(id, new DisplayBox(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1) + thickness, Math.Abs(y2 - y1) + thickness),
@@ -1429,7 +1624,9 @@ public sealed class ScorePageComposer
     }
 
     private StaffSkyline[][] MeasureExtents(Score score, ScoreLayoutResult layout, VerticalLayoutResult provisional,
-        int staffCount, StaffElementPlacer placer, double leftMargin, CancellationToken cancellationToken)
+        int staffCount, StaffElementPlacer placer, double leftMargin,
+        Dictionary<EventId, List<Attachment>> attachments, ImmutableArray<LyricAnchor> lyricAnchors,
+        CancellationToken cancellationToken)
     {
         StaffSkyline[][] extents = new StaffSkyline[layout.Systems.Length][];
         for (int systemIndex = 0; systemIndex < layout.Systems.Length; systemIndex++)
@@ -1437,7 +1634,7 @@ public sealed class ScorePageComposer
             cancellationToken.ThrowIfCancellationRequested();
             SystemVerticalPlacement placement = provisional.Systems[systemIndex];
             ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
-            SystemState scratch = new(BuildAttachmentIndex(score));
+            SystemState scratch = new(attachments, lyricAnchors);
             DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch, leftMargin, cancellationToken);
             double[] top = new double[staffCount];
             double[] bottom = new double[staffCount];

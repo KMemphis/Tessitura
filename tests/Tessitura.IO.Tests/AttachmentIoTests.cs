@@ -102,6 +102,62 @@ public sealed class AttachmentIoTests
     }
 
     [Fact]
+    public void SeveralLyricVersesHyphensAndExtendersSurviveTessAndMusicXml()
+    {
+        (Score score, Chord[] notes) = Create();
+        EditContext context = new(0, 0, 1);
+        Score marked = new SetLyricCommand(new LyricAttachment(notes[0].Id, 1, "glo",
+            LyricSyllabic.Begin, LyricExtender.Start)).Apply(score, context);
+        marked = new SetLyricCommand(new LyricAttachment(notes[1].Id, 1, "ri",
+            LyricSyllabic.Middle, LyricExtender.Continue)).Apply(marked, context);
+        EventId stopEvent = score.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[2].Id;
+        marked = new SetLyricCommand(new LyricAttachment(stopEvent, 1, "a",
+            LyricSyllabic.End, LyricExtender.Stop)).Apply(marked, context);
+        marked = new SetLyricCommand(new LyricAttachment(notes[0].Id, 2, "Praise")).Apply(marked, context);
+        marked = new AddAttachmentCommand(new ChordSymbolAttachment(notes[0].Id, Step.C, 0, "maj7"))
+            .Apply(marked, context);
+        string path = Path.Combine(Path.GetTempPath(), $"tessitura-lyrics-{Guid.NewGuid():N}.tess");
+        try
+        {
+            TessFile.Save(path, marked, new Tessitura.Engraving.Style { StaffLineThickness = 0.1 });
+            Score tess = TessFile.Open(path).Score;
+            Assert.Equal(marked.AttachmentList.OrderBy(a => a.ToString()), tess.AttachmentList.OrderBy(a => a.ToString()));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        System.Xml.Linq.XDocument document = MusicXmlExporter.ToDocument(marked);
+        Assert.Empty(MusicXmlSchema.Validate(document));
+        System.Xml.Linq.XElement[] xmlLyrics = [.. document.Descendants().Where(e => e.Name.LocalName == "lyric")];
+        Assert.Contains(xmlLyrics, lyric => lyric.Attribute("number")?.Value == "1" &&
+            lyric.Element(lyric.Name.Namespace + "text")?.Value == "glo" &&
+            lyric.Element(lyric.Name.Namespace + "syllabic")?.Value == "begin" &&
+            lyric.Element(lyric.Name.Namespace + "extend")?.Attribute("type")?.Value == "start");
+        Assert.Contains(xmlLyrics, lyric => lyric.Attribute("number")?.Value == "1" &&
+            lyric.Element(lyric.Name.Namespace + "text")?.Value == "ri" &&
+            lyric.Element(lyric.Name.Namespace + "syllabic")?.Value == "middle" &&
+            lyric.Element(lyric.Name.Namespace + "extend")?.Attribute("type")?.Value == "continue");
+        Assert.Contains(xmlLyrics, lyric => lyric.Attribute("number")?.Value == "1" &&
+            lyric.Element(lyric.Name.Namespace + "text")?.Value == "a" &&
+            lyric.Element(lyric.Name.Namespace + "syllabic")?.Value == "end" &&
+            lyric.Element(lyric.Name.Namespace + "extend")?.Attribute("type")?.Value == "stop");
+        Assert.Contains(xmlLyrics, lyric => lyric.Attribute("number")?.Value == "2" &&
+            lyric.Element(lyric.Name.Namespace + "text")?.Value == "Praise");
+
+        Score imported = MusicXmlImporter.Import(document).Score;
+        LyricAttachment[] lyrics = [.. imported.AttachmentList.OfType<LyricAttachment>()
+            .OrderBy(lyric => lyric.Verse).ThenBy(lyric => lyric.Text)];
+        Assert.Equal([(1, "a", LyricSyllabic.End, LyricExtender.Stop),
+            (1, "glo", LyricSyllabic.Begin, LyricExtender.Start),
+            (1, "ri", LyricSyllabic.Middle, LyricExtender.Continue),
+            (2, "Praise", LyricSyllabic.Single, LyricExtender.None)],
+            lyrics.Select(lyric => (lyric.Verse, lyric.Text, lyric.Syllabic, lyric.Extender)));
+        Assert.Contains(imported.AttachmentList.OfType<ChordSymbolAttachment>(), symbol => symbol.Display == "Cmaj7");
+    }
+
+    [Fact]
     public void SlursSurviveTessAndMusicXmlAndDuplicatesAreIgnored()
     {
         (Score score, Chord[] notes) = Create();

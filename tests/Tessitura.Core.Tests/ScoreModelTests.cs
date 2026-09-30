@@ -25,6 +25,17 @@ public sealed class ScoreModelTests
     }
 
     [Fact]
+    public void LyricModelRequiresPositiveVersesTextAndKnownMarkValues()
+    {
+        EventId target = new(Guid.NewGuid());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LyricAttachment(target, 0, "la"));
+        Assert.Throws<ArgumentException>(() => new LyricAttachment(target, 1, " "));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LyricAttachment(target, 1, "la", (LyricSyllabic)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LyricAttachment(target, 1, "la", Extender: (LyricExtender)99));
+        Assert.Equal(string.Empty, new LyricAttachment(target, 1, "", Extender: LyricExtender.Stop).Text);
+    }
+
+    [Fact]
     public void GapInVoiceFailsEvenWhenDurationsSumToMeasureLength()
     {
         Measure measure = new(1, new TimeSignature(4, 4));

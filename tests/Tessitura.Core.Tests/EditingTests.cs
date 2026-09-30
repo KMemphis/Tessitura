@@ -301,6 +301,30 @@ public sealed class EditingTests
         Assert.Equal(initial, history.Undo());
     }
 
+    [Fact]
+    public void LyricCommandsKeepVersesSeparateReplaceOneVerseAndUndo()
+    {
+        Score initial = CreateScore();
+        LyricAttachment firstVerse = new(MainEventId, 1, "hal", LyricSyllabic.Begin);
+        LyricAttachment secondVerse = new(MainEventId, 2, "sing");
+        Score one = new SetLyricCommand(firstVerse).Apply(initial, Context);
+        Score two = new SetLyricCommand(secondVerse).Apply(one, Context);
+        LyricAttachment corrected = firstVerse with { Text = "praise", Syllabic = LyricSyllabic.Single };
+        Score replaced = new SetLyricCommand(corrected).Apply(two, Context);
+        Score removed = new RemoveLyricCommand(MainEventId, 2).Apply(replaced, Context);
+        History history = new(initial);
+        history.Push(one, "Set lyric", Selection.Empty);
+        history.Push(two, "Set lyric", Selection.Empty);
+
+        Assert.Empty(initial.AttachmentList);
+        Assert.Equal(2, two.AttachmentList.OfType<LyricAttachment>().Count());
+        Assert.Equal(2, replaced.AttachmentList.OfType<LyricAttachment>().Count());
+        Assert.Contains(corrected, replaced.AttachmentList);
+        Assert.Equal([corrected], removed.AttachmentList.OfType<LyricAttachment>().AsEnumerable());
+        Assert.Equal(one, history.Undo());
+        Assert.Equal(initial, history.Undo());
+    }
+
     [Property(MaxTest = 200)]
     public void UndoingGeneratedCommandSequencesRestoresTheInitialScore(
         int first,

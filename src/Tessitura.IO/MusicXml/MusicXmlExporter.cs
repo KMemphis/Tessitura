@@ -275,6 +275,7 @@ public static class MusicXmlExporter
         AddLineDirections(measure, musicEvent.Id, spanners, staff, staffCount);
         List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale, attachments);
         AddSlurMarks(written, musicEvent.Id, spanners);
+        AddLyrics(written, attachments[musicEvent.Id]);
         if (actual == normal)
         {
             return;
@@ -350,7 +351,16 @@ public static class MusicXmlExporter
             notations.Add(new XElement("tuplet", new XAttribute("type", bracket)));
             if (notations.Parent is null)
             {
-                note.Add(notations);
+                XElement? afterNotation = note.Elements().FirstOrDefault(element =>
+                    element.Name.LocalName is "lyric" or "play" or "listen");
+                if (afterNotation is null)
+                {
+                    note.Add(notations);
+                }
+                else
+                {
+                    afterNotation.AddBeforeSelf(notations);
+                }
             }
         }
     }
@@ -449,6 +459,32 @@ public static class MusicXmlExporter
         openTies.UnionWith(nextTies);
         AddMarks(written, attachments[musicEvent.Id]);
         return written;
+    }
+
+    private static void AddLyrics(List<XElement> written, IEnumerable<Attachment> attachments)
+    {
+        if (written.Count == 0)
+        {
+            return;
+        }
+
+        List<LyricAttachment> lyrics = [.. attachments.OfType<LyricAttachment>().OrderBy(static lyric => lyric.Verse)];
+        foreach (LyricAttachment lyric in lyrics)
+        {
+            XElement element = new("lyric", new XAttribute("number", lyric.Verse));
+            if (!string.IsNullOrEmpty(lyric.Text))
+            {
+                element.Add(new XElement("syllabic", lyric.Syllabic.ToString().ToLowerInvariant()));
+                element.Add(new XElement("text", lyric.Text));
+            }
+
+            if (lyric.Extender != LyricExtender.None)
+            {
+                element.Add(new XElement("extend", new XAttribute("type", lyric.Extender.ToString().ToLowerInvariant())));
+            }
+
+            written[0].Add(element);
+        }
     }
 
     // Articulations, ornaments and fermatas go into the notations of the first note of the event.

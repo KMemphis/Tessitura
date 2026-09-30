@@ -611,6 +611,12 @@ public sealed class ScoreInputController
             return false;
         }
 
+        if (attachment is LyricAttachment lyric)
+        {
+            return ApplySelectedEvent(selectedEvent => new SetLyricCommand(
+                ResolveLyricSyllabic(lyric, FindEventLocation(selectedEvent.EventId))));
+        }
+
         return ApplySelectedEvent(_ => new AddAttachmentCommand(attachment));
     }
 
@@ -1092,6 +1098,54 @@ public sealed class ScoreInputController
         Apply(new SetMeasureRepeatCommand(changed), context, CurrentSelection);
         NotifyStateChanged();
         return true;
+    }
+
+    private LyricAttachment ResolveLyricSyllabic(LyricAttachment lyric, EventLocation target)
+    {
+        if (lyric.Extender != LyricExtender.None)
+        {
+            return lyric;
+        }
+
+        bool previousContinuesWord = false;
+        for (int measureIndex = 0; measureIndex <= target.Context.MeasureIndex; measureIndex++)
+        {
+            if (!CurrentScore.Content.TryGetValue(new StaffMeasureKey(target.Context.StaffIndex, measureIndex),
+                out StaffMeasure? staffMeasure))
+            {
+                continue;
+            }
+
+            foreach (Voice voice in staffMeasure.Voices)
+            {
+                if (voice.Number != target.Context.VoiceNumber)
+                {
+                    continue;
+                }
+
+                foreach ((MusicEvent musicEvent, _, _) in voice.Events.Flatten())
+                {
+                    if (musicEvent.Id == target.Event.Id)
+                    {
+                        LyricSyllabic syllabic = lyric.Syllabic == LyricSyllabic.Begin
+                            ? previousContinuesWord ? LyricSyllabic.Middle : LyricSyllabic.Begin
+                            : previousContinuesWord ? LyricSyllabic.End : LyricSyllabic.Single;
+                        return lyric with { Syllabic = syllabic };
+                    }
+
+                    foreach (Attachment attachment in CurrentScore.AttachmentList)
+                    {
+                        if (attachment is LyricAttachment previous && previous.Target == musicEvent.Id &&
+                            previous.Verse == lyric.Verse)
+                        {
+                            previousContinuesWord = previous.Syllabic is LyricSyllabic.Begin or LyricSyllabic.Middle;
+                        }
+                    }
+                }
+            }
+        }
+
+        return lyric;
     }
 
     private int MeasureAtCursor()

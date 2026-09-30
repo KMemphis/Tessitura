@@ -100,7 +100,7 @@ public sealed class MusicXmlExporterTests
             }
         }
 
-        Assert.Empty(invalid);
+        Assert.True(invalid.Count == 0, string.Join(Environment.NewLine, invalid));
         Assert.True(exported >= 170, $"only {exported} files were exported");
     }
 

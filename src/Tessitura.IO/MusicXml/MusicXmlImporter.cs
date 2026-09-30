@@ -345,6 +345,7 @@ public static class MusicXmlImporter
                             TempoAttachment t => t with { Target = eventId },
                             TextAttachment t => t with { Target = eventId },
                             ChordSymbolAttachment c => c with { Target = eventId },
+                            LyricAttachment l => l with { Target = eventId },
                             _ => extra,
                         });
                     }
@@ -680,7 +681,7 @@ public static class MusicXmlImporter
                 _pendingDynamic = null;
             }
 
-            ImmutableArray<Attachment> extra = isChord ? default : [.. _pendingAttachments];
+            ImmutableArray<Attachment> extra = isChord ? default : [.. _pendingAttachments, .. ReadLyrics(note, where)];
             if (!isChord)
             {
                 _pendingAttachments.Clear();
@@ -722,6 +723,51 @@ public static class MusicXmlImporter
             }
 
             return new Pitch(step, alter, octave);
+        }
+
+        private ImmutableArray<Attachment> ReadLyrics(XElement note, string where)
+        {
+            ImmutableArray<Attachment>.Builder lyrics = ImmutableArray.CreateBuilder<Attachment>();
+            foreach (XElement element in note.Elements().Where(e => e.Name.LocalName == "lyric"))
+            {
+                string? numberText = element.Attribute("number")?.Value;
+                int verse = string.IsNullOrEmpty(numberText) ? 1
+                    : int.TryParse(numberText, NumberStyles.None, CultureInfo.InvariantCulture, out int parsedVerse)
+                        ? parsedVerse : 0;
+                if (verse < 1)
+                {
+                    Warn(where, "lyric with an invalid verse number was skipped");
+                    continue;
+                }
+
+                string syllabicText = element.Elements().FirstOrDefault(e => e.Name.LocalName == "syllabic")?.Value ?? "single";
+                LyricSyllabic syllabic = syllabicText.ToLowerInvariant() switch
+                {
+                    "begin" => LyricSyllabic.Begin,
+                    "middle" => LyricSyllabic.Middle,
+                    "end" => LyricSyllabic.End,
+                    _ => LyricSyllabic.Single,
+                };
+                string extensionText = element.Elements().FirstOrDefault(e => e.Name.LocalName == "extend")?
+                    .Attribute("type")?.Value ?? string.Empty;
+                LyricExtender extender = extensionText.ToLowerInvariant() switch
+                {
+                    "start" => LyricExtender.Start,
+                    "continue" => LyricExtender.Continue,
+                    "stop" => LyricExtender.Stop,
+                    _ => LyricExtender.None,
+                };
+                string text = element.Elements().FirstOrDefault(e => e.Name.LocalName == "text")?.Value ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(text) && extender is not (LyricExtender.Continue or LyricExtender.Stop))
+                {
+                    Warn(where, "lyric without text or an extender mark was skipped");
+                    continue;
+                }
+
+                lyrics.Add(new LyricAttachment(default, verse, text, syllabic, extender));
+            }
+
+            return lyrics.ToImmutable();
         }
 
         private static SpannerKind[] Family(SpannerKind kind) => kind switch

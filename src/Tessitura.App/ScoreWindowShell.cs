@@ -122,6 +122,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         new("text.dynamic", "Escribir dinámica", "Shift+D", () => _textPopover?.Open(TextEntryKind.Dynamic)),
         new("text.tempo", "Escribir tempo", "Shift+T", () => _textPopover?.Open(TextEntryKind.Tempo)),
         new("text.text", "Escribir texto o cifrado", "Shift+X", () => _textPopover?.Open(TextEntryKind.Text)),
+        new("text.lyric", "Escribir letra", "Shift+L", () => _textPopover?.Open(TextEntryKind.Lyric)),
         new("view.page", "Vista de página", "Ctrl+Shift+1", () => Canvas.Focus()),
         new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",

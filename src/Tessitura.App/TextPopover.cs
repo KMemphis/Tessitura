@@ -6,7 +6,7 @@ using Tessitura.Editing;
 
 namespace Tessitura.App;
 
-/// <summary>A small entry box for dynamics, tempo marks, chord symbols and text, opened with Shift+D, Shift+T and Shift+X.</summary>
+/// <summary>A small entry box for dynamics, tempo marks, chord symbols, text and lyrics.</summary>
 public sealed class TextPopover : Border
 {
     private readonly ScoreInputController _input;
@@ -59,6 +59,7 @@ public sealed class TextPopover : Border
         {
             TextEntryKind.Dynamic => "Dinámica: ppp, pp, p, mp, mf, f, ff o fff",
             TextEntryKind.Tempo => "Tempo: por ejemplo q=120 o e.=60",
+            TextEntryKind.Lyric => "Letra: estrofa:sílaba (1:glo-, 2:gloria); ~ inicia, ~> continúa y ~ termina un extensor",
             _ => "Texto o cifrado: por ejemplo Cmaj7, F#m7/A o dolce",
         };
         _box.Text = string.Empty;

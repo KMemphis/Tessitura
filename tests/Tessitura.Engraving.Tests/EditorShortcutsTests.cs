@@ -29,6 +29,7 @@ public sealed class EditorShortcutsTests
 
         Assert.Contains(all, a => a.Id == "file.save");
         Assert.Contains(all, a => a.Id == "midi.connect");
+        Assert.Contains(all, a => a.Id == "text.lyric");
         Assert.Contains(all, a => a.Id == "repeat.start.toggle");
         Assert.Contains(all, a => a.Id == "repeat.end.toggle");
         Assert.Contains(all, a => a.Id == "repeat.ending.1.toggle");

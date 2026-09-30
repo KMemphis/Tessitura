@@ -462,6 +462,75 @@ public sealed record ChordSymbolAttachment(EventId Target, Step Root, int RootAl
     private static string Accidental(int alter) => alter switch { > 0 => "♯", < 0 => "♭", _ => "" };
 }
 
+/// <summary>Describes whether a lyric syllable starts, continues, or ends a hyphenated word.</summary>
+public enum LyricSyllabic
+{
+    /// <summary>A complete single-syllable word.</summary>
+    Single,
+    /// <summary>The first syllable of a word with more than one syllable.</summary>
+    Begin,
+    /// <summary>A middle syllable followed by another syllable.</summary>
+    Middle,
+    /// <summary>The final syllable of a hyphenated word.</summary>
+    End,
+}
+
+/// <summary>Describes one point in a lyric extender line.</summary>
+public enum LyricExtender
+{
+    /// <summary>This syllable has no extender line.</summary>
+    None,
+    /// <summary>The extender line starts at this syllable.</summary>
+    Start,
+    /// <summary>The extender line continues through this event.</summary>
+    Continue,
+    /// <summary>The extender line stops at this event.</summary>
+    Stop,
+}
+
+/// <summary>A syllable of one verse attached to a musical event.</summary>
+/// <param name="Target">The event carrying the syllable or extender mark.</param>
+/// <param name="Verse">The one-based verse number.</param>
+/// <param name="Text">The syllable text, empty only on extender continuation or stop marks.</param>
+/// <param name="Syllabic">The syllable's position in its word.</param>
+/// <param name="Extender">Whether an extender starts, continues, or stops here.</param>
+public sealed record LyricAttachment(
+    EventId Target,
+    int Verse,
+    string Text,
+    LyricSyllabic Syllabic = LyricSyllabic.Single,
+    LyricExtender Extender = LyricExtender.None) : Attachment(Target)
+{
+    /// <summary>Gets the one-based verse number.</summary>
+    public int Verse { get; init; } = Verse > 0
+        ? Verse
+        : throw new ArgumentOutOfRangeException(nameof(Verse), "A lyric verse number must be positive.");
+
+    /// <summary>Gets the syllable text.</summary>
+    public string Text { get; init; } = ValidateText(Text, Extender);
+
+    /// <summary>Gets the syllable's position in its word.</summary>
+    public LyricSyllabic Syllabic { get; init; } = Enum.IsDefined(Syllabic)
+        ? Syllabic
+        : throw new ArgumentOutOfRangeException(nameof(Syllabic));
+
+    /// <summary>Gets the extender state at this event.</summary>
+    public LyricExtender Extender { get; init; } = Enum.IsDefined(Extender)
+        ? Extender
+        : throw new ArgumentOutOfRangeException(nameof(Extender));
+
+    private static string ValidateText(string text, LyricExtender extender)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (string.IsNullOrWhiteSpace(text) && extender is not (LyricExtender.Continue or LyricExtender.Stop))
+        {
+            throw new ArgumentException("A lyric needs syllable text unless it only marks an extender.", nameof(text));
+        }
+
+        return text;
+    }
+}
+
 /// <summary>A dynamic level that starts at an event.</summary>
 /// <param name="Target">The event where the level begins.</param>
 /// <param name="Level">The level.</param>

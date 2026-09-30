@@ -38,6 +38,55 @@ public sealed class TextPopoverTests
     }
 
     [Fact]
+    public void LyricPopoverSetsSyllablesAcrossSeveralVersesAndUndoesThem()
+    {
+        Chord[] notes = [.. Enumerable.Range(0, 4).Select(index => new Chord(
+            new EventId(Guid.NewGuid()), new Fraction(index, 4), new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.C, 0, 5))], StemDirection.Auto))];
+        Score score = new(new ScoreMetadata("Hymn", ""), [new Instrument("Voice", [new Staff("Soprano")])],
+            [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1, [.. notes])])));
+        ScoreInputController input = new(score);
+        ScoreWindowShell shell = new(new ScoreCanvas(), input);
+        string settings = Path.Combine(Path.GetTempPath(), $"tessitura-lyrics-{Guid.NewGuid():N}.json");
+        try
+        {
+            ActionRegistry actions = ActionRegistry.LoadOrCreate(input.CreateActions().AddRange(shell.CreateActions()), settings);
+            shell.AttachActionRegistry(actions);
+            TextPopover popover = shell.TextPopover!;
+
+            input.SelectEvent(notes[0].Id);
+            Assert.True(actions.TryExecute("text.lyric"));
+            popover.Text = "1:glo-";
+            Assert.True(popover.Submit());
+            input.SelectEvent(notes[1].Id);
+            Assert.True(input.SubmitText(TextEntryKind.Lyric, "1:ri-"));
+            input.SelectEvent(notes[2].Id);
+            Assert.True(input.SubmitText(TextEntryKind.Lyric, "1:a"));
+            input.SelectEvent(notes[0].Id);
+            Assert.True(input.SubmitText(TextEntryKind.Lyric, "2:Praise"));
+
+            LyricAttachment[] lyrics = [.. input.CurrentScore.AttachmentList.OfType<LyricAttachment>()];
+            Assert.Contains(lyrics, lyric => lyric.Target == notes[0].Id && lyric.Verse == 1 &&
+                lyric.Text == "glo" && lyric.Syllabic == LyricSyllabic.Begin);
+            Assert.Contains(lyrics, lyric => lyric.Target == notes[1].Id && lyric.Verse == 1 &&
+                lyric.Text == "ri" && lyric.Syllabic == LyricSyllabic.Middle);
+            Assert.Contains(lyrics, lyric => lyric.Target == notes[2].Id && lyric.Verse == 1 &&
+                lyric.Text == "a" && lyric.Syllabic == LyricSyllabic.End);
+            Assert.Contains(lyrics, lyric => lyric.Target == notes[0].Id && lyric.Verse == 2 && lyric.Text == "Praise");
+
+            input.Undo();
+            Assert.Equal(3, input.CurrentScore.AttachmentList.OfType<LyricAttachment>().Count());
+        }
+        finally
+        {
+            File.Delete(settings);
+            shell.Dispose();
+        }
+    }
+
+    [Fact]
     public void BadTextAndMissingSelectionKeepThePopoverOpenWithAnExplanation()
     {
         (ScoreInputController input, ScoreWindowShell shell, ActionRegistry actions, Chord note) = Create();

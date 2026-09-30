@@ -13,6 +13,8 @@ public enum TextEntryKind
     Tempo,
     /// <summary>Text or a chord symbol such as <c>Cmaj7</c> (<c>Shift+X</c>).</summary>
     Text,
+    /// <summary>A verse syllable such as <c>1:glo-</c> (<c>Shift+L</c>).</summary>
+    Lyric,
 }
 
 /// <summary>Turns text typed in a popover into the right attachment.</summary>
@@ -45,6 +47,8 @@ public static partial class TextEntryParser
                 return attachment is not null;
             case TextEntryKind.Tempo:
                 return TryParseTempo(text, target, out attachment);
+            case TextEntryKind.Lyric:
+                return TryParseLyric(text, target, out attachment);
             default:
                 Match chord = ChordPattern().Match(text);
                 if (chord.Success && IsQuality(chord.Groups[3].Value))
@@ -83,6 +87,55 @@ public static partial class TextEntryParser
             _ => NoteValue.Quarter, // q, ♩ or nothing
         };
         attachment = new TempoAttachment(target, new Duration(value, match.Groups[2].Length > 0 ? 1 : 0), bpm);
+        return true;
+    }
+
+    private static bool TryParseLyric(string text, EventId target, out Attachment? attachment)
+    {
+        attachment = null;
+        int verse = 1;
+        int separator = text.IndexOf(':');
+        if (separator >= 0)
+        {
+            if (!int.TryParse(text.AsSpan(0, separator), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out verse) || verse < 1)
+            {
+                return false;
+            }
+
+            text = text[(separator + 1)..].Trim();
+        }
+
+        LyricExtender extender = LyricExtender.None;
+        if (text == "~>")
+        {
+            extender = LyricExtender.Continue;
+            text = string.Empty;
+        }
+        else if (text == "~")
+        {
+            extender = LyricExtender.Stop;
+            text = string.Empty;
+        }
+        else if (text.EndsWith('~'))
+        {
+            extender = LyricExtender.Start;
+            text = text[..^1].TrimEnd();
+        }
+
+        LyricSyllabic syllabic = LyricSyllabic.Single;
+        if (text.EndsWith('-'))
+        {
+            syllabic = LyricSyllabic.Begin;
+            text = text[..^1].TrimEnd();
+        }
+
+        if (string.IsNullOrWhiteSpace(text) && extender is not (LyricExtender.Continue or LyricExtender.Stop))
+        {
+            return false;
+        }
+
+        attachment = new LyricAttachment(target, verse, text, syllabic, extender);
         return true;
     }
 
