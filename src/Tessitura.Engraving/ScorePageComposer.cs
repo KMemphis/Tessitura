@@ -278,19 +278,16 @@ public sealed class ScorePageComposer
             out (int Voice, EventId Event, int Note)[] order);
         bool manyVoices = staffMeasure.Voices.Length > 1;
         double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
-        Dictionary<EventId, List<ArticulationKind>> articulations = [];
+        Dictionary<EventId, List<Attachment>> articulations = [];
         foreach (Attachment attachment in score.AttachmentList)
         {
-            if (attachment is ArticulationAttachment mark)
+            if (!articulations.TryGetValue(attachment.Target, out List<Attachment>? list))
             {
-                if (!articulations.TryGetValue(mark.Target, out List<ArticulationKind>? list))
-                {
-                    list = [];
-                    articulations[mark.Target] = list;
-                }
-
-                list.Add(mark.Kind);
+                list = [];
+                articulations[attachment.Target] = list;
             }
+
+            list.Add(attachment);
         }
 
         double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
@@ -323,9 +320,10 @@ public sealed class ScorePageComposer
         Fraction position, Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth,
         double staffTop, double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks,
         bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift,
-        Dictionary<EventId, List<ArticulationKind>> articulations)
+        Dictionary<EventId, List<Attachment>> articulations)
     {
         double x = measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
+        AddAnnotations(primitives, leaf.Id, x, staffTop, articulations);
         if (leaf is Rest rest)
         {
             primitives.AddRange(placer.PlaceRest(rest.Id, rest.Duration, x, staffTop, restShift));
@@ -383,11 +381,85 @@ public sealed class ScorePageComposer
         AddArticulations(primitives, placer, chord, x + headWidth / 2, staffTop, clef, voiceStem, articulations);
     }
 
+    // Dynamics sit below the staff, tempo marks and chord symbols above it, expression text below the dynamics.
+    private void AddAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives, EventId eventId, double x,
+        double staffTop, Dictionary<EventId, List<Attachment>> attachments)
+    {
+        if (!attachments.TryGetValue(eventId, out List<Attachment>? list))
+        {
+            return;
+        }
+
+        ElementId id = new(eventId.Value);
+        double centerX = x + _metadata.GetBoundingBox("noteheadBlack").NorthEast.X / 2;
+        foreach (Attachment attachment in list)
+        {
+            switch (attachment)
+            {
+                case DynamicAttachment dynamic:
+                    string name = dynamic.Level switch
+                    {
+                        DynamicLevel.Ppp => "dynamicPPP",
+                        DynamicLevel.Pp => "dynamicPP",
+                        DynamicLevel.P => "dynamicPiano",
+                        DynamicLevel.Mp => "dynamicMP",
+                        DynamicLevel.Mf => "dynamicMF",
+                        DynamicLevel.F => "dynamicForte",
+                        DynamicLevel.Ff => "dynamicFF",
+                        _ => "dynamicFFF",
+                    };
+                    SmuflBoundingBox box = _metadata.GetBoundingBox(name);
+                    AddGlyph(primitives, id, name, centerX - (box.NorthEast.X - box.SouthWest.X) / 2 - box.SouthWest.X, staffTop + 7.5);
+                    break;
+                case TempoAttachment tempo:
+                    string beat = tempo.Beat.Value switch
+                    {
+                        NoteValue.Whole => "metNoteWhole",
+                        NoteValue.Half => "metNoteHalfUp",
+                        NoteValue.Eighth => "metNote8thUp",
+                        NoteValue.Sixteenth => "metNote16thUp",
+                        _ => "metNoteQuarterUp",
+                    };
+                    AddGlyph(primitives, id, beat, x, staffTop - 3.5);
+                    double afterBeat = x + _metadata.GetBoundingBox(beat).NorthEast.X + (tempo.Beat.Dots > 0 ? 0.6 : 0) + 0.3;
+                    if (tempo.Beat.Dots > 0)
+                    {
+                        AddGlyph(primitives, id, "metAugmentationDot", x + _metadata.GetBoundingBox(beat).NorthEast.X + 0.15, staffTop - 3.5);
+                    }
+
+                    string label = $"= {tempo.Bpm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}";
+                    AddText(primitives, id, label, afterBeat, staffTop - 3.5, 2.6);
+                    break;
+                case ChordSymbolAttachment chord:
+                    AddText(primitives, id, chord.Display, x, staffTop - 2.2, 2.8);
+                    break;
+                case TextAttachment text:
+                    AddText(primitives, id, text.Text, x, staffTop + 10.5, 2.6);
+                    break;
+            }
+        }
+    }
+
+    private static void AddText(ImmutableArray<DrawingPrimitive>.Builder primitives, ElementId id, string text, double x,
+        double baselineY, double size)
+    {
+        // The width is estimated from the character count; exact metrics arrive with the text shaper in F4.8.
+        double width = text.Length * size * 0.55;
+        primitives.Add(new DisplayLists.Text(id, new DisplayBox(x, baselineY - size * 0.8, width, size),
+            text, new DisplayPoint(x, baselineY), size));
+    }
+
     private static void AddArticulations(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer,
         Chord chord, double centerX, double staffTop, Clef clef, StemDirection? voiceStem,
-        Dictionary<EventId, List<ArticulationKind>> articulations)
+        Dictionary<EventId, List<Attachment>> articulations)
     {
-        if (!articulations.TryGetValue(chord.Id, out List<ArticulationKind>? kinds))
+        if (!articulations.TryGetValue(chord.Id, out List<Attachment>? attached))
+        {
+            return;
+        }
+
+        List<ArticulationKind> kinds = [.. attached.OfType<ArticulationAttachment>().Select(a => a.Kind)];
+        if (kinds.Count == 0)
         {
             return;
         }
@@ -412,7 +484,7 @@ public sealed class ScorePageComposer
         Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth, double staffTop,
         double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks, bool manyVoices,
         double headWidth, StemDirection? voiceStem, double restShift,
-        Dictionary<EventId, List<ArticulationKind>> articulations)
+        Dictionary<EventId, List<Attachment>> articulations)
     {
         double left = double.MaxValue;
         double right = double.MinValue;

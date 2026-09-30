@@ -488,6 +488,22 @@ public sealed class ScoreInputController
         return true;
     }
 
+    /// <summary>Attaches what the user typed in a popover (dynamic, tempo, chord symbol or text) to the selected event.</summary>
+    /// <param name="kind">Which popover the text came from.</param>
+    /// <param name="text">The typed text, such as "mf", "q=120" or "Cmaj7".</param>
+    /// <returns>Whether one event was selected and the text was understood.</returns>
+    public bool SubmitText(TextEntryKind kind, string text)
+    {
+        ScoreEventProperties? selected = SelectedEventProperties;
+        if (selected is not ScoreEventProperties properties ||
+            !TextEntryParser.TryParse(text, kind, properties.EventId, out Attachment? attachment) || attachment is null)
+        {
+            return false;
+        }
+
+        return ApplySelectedEvent(_ => new AddAttachmentCommand(attachment));
+    }
+
     /// <summary>Adds an articulation to the selected event, or removes it if already present.</summary>
     /// <param name="kind">The articulation or ornament.</param>
     /// <returns>Whether a single event was selected.</returns>

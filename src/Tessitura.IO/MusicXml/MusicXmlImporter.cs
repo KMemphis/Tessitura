@@ -83,7 +83,7 @@ public static class MusicXmlImporter
     private sealed record RawNote(
         int Measure, int Staff, string Voice, Fraction Onset, Fraction Duration, Duration? Notated,
         bool IsRest, bool IsChordMember, Pitch? Pitch, bool TieStart,
-        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null);
+        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null, ImmutableArray<Attachment> Extra = default);
 
     private sealed class Importer
     {
@@ -91,6 +91,7 @@ public static class MusicXmlImporter
         private readonly HashSet<string> _seenOnce = [];
         private readonly List<Attachment> _attachments = [];
         private DynamicLevel? _pendingDynamic;
+        private readonly List<Attachment> _pendingAttachments = [];
 
         public MusicXmlImportResult Run(XDocument document)
         {
@@ -283,6 +284,20 @@ public static class MusicXmlImporter
                     _attachments.Add(new DynamicAttachment(eventId, level));
                 }
 
+                if (!note.Extra.IsDefaultOrEmpty)
+                {
+                    foreach (Attachment extra in note.Extra)
+                    {
+                        _attachments.Add(extra switch
+                        {
+                            TempoAttachment t => t with { Target = eventId },
+                            TextAttachment t => t with { Target = eventId },
+                            ChordSymbolAttachment c => c with { Target = eventId },
+                            _ => extra,
+                        });
+                    }
+                }
+
                 ends[key] = absolute + notated.Length;
             }
 
@@ -348,6 +363,7 @@ public static class MusicXmlImporter
                 Fraction lastOnset = Fraction.Zero;
                 string where = $"{id}, measure {measureIndex + 1}";
                 _pendingDynamic = null;
+                _pendingAttachments.Clear();
                 foreach (XElement element in measure.Elements())
                 {
                     switch (element.Name.LocalName)
@@ -361,7 +377,37 @@ public static class MusicXmlImporter
                         case "forward":
                             cursor += new Fraction(Math.Max(0, ReadLong(element, "duration")), Math.Max(1, divisions) * 4L);
                             break;
+                        case "harmony":
+                            if (element.Element("root")?.Element("root-step")?.Value is { } rootStep && Enum.TryParse(rootStep, out Step harmonyRoot))
+                            {
+                                int.TryParse(element.Element("root")?.Element("root-alter")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int rootAlter);
+                                Step? harmonyBass = element.Element("bass")?.Element("bass-step")?.Value is { } bassStep && Enum.TryParse(bassStep, out Step parsedBass) ? parsedBass : null;
+                                int.TryParse(element.Element("bass")?.Element("bass-alter")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int bassAlter);
+                                _pendingAttachments.Add(new ChordSymbolAttachment(default, harmonyRoot, rootAlter,
+                                    element.Element("kind")?.Attribute("text")?.Value ?? "", harmonyBass, bassAlter));
+                            }
+
+                            break;
                         case "direction":
+                            foreach (XElement directionType in element.Elements("direction-type"))
+                            {
+                                if (directionType.Element("words")?.Value is { Length: > 0 } words)
+                                {
+                                    _pendingAttachments.Add(new TextAttachment(default, words));
+                                }
+
+                                if (directionType.Element("metronome") is { } metronome &&
+                                    double.TryParse(metronome.Element("per-minute")?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double perMinute))
+                                {
+                                    NoteValue unit = metronome.Element("beat-unit")?.Value switch
+                                    {
+                                        "whole" => NoteValue.Whole, "half" => NoteValue.Half, "eighth" => NoteValue.Eighth,
+                                        "16th" => NoteValue.Sixteenth, _ => NoteValue.Quarter,
+                                    };
+                                    _pendingAttachments.Add(new TempoAttachment(default, new Duration(unit, metronome.Elements("beat-unit-dot").Any() ? 1 : 0), perMinute));
+                                }
+                            }
+
                             if (element.Elements("direction-type").Elements("dynamics").Elements().FirstOrDefault() is { } dynamicElement &&
                                 Enum.TryParse(dynamicElement.Name.LocalName, ignoreCase: true, out DynamicLevel level) &&
                                 Enum.IsDefined(level))
@@ -566,8 +612,14 @@ public static class MusicXmlImporter
                 _pendingDynamic = null;
             }
 
+            ImmutableArray<Attachment> extra = isChord ? default : [.. _pendingAttachments];
+            if (!isChord)
+            {
+                _pendingAttachments.Clear();
+            }
+
             data.Notes.Add(new RawNote(measureIndex, staff, voice, onset,
-                duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic));
+                duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic, extra));
         }
 
         private Pitch? ReadPitch(XElement note, string where)

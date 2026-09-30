@@ -74,10 +74,22 @@ public sealed record PerformanceHints(
         ArgumentNullException.ThrowIfNull(score);
         ImmutableArray<DynamicMark>.Builder dynamics = ImmutableArray.CreateBuilder<DynamicMark>();
         ImmutableArray<ArticulationMark>.Builder articulations = ImmutableArray.CreateBuilder<ArticulationMark>();
+        ImmutableArray<TempoMark>.Builder tempos = ImmutableArray.CreateBuilder<TempoMark>();
+        Dictionary<EventId, Fraction>? positions = null;
         foreach (Attachment attachment in score.AttachmentList)
         {
             switch (attachment)
             {
+                case TempoAttachment tempo:
+                    positions ??= EventPositions(score);
+                    if (positions.TryGetValue(tempo.Target, out Fraction at))
+                    {
+                        // The beat unit may not be a quarter: convert to quarter notes per minute.
+                        Fraction quarters = tempo.Beat.Length * new Fraction(4, 1);
+                        tempos.Add(new TempoMark(at, tempo.Bpm * (double)quarters.Num / quarters.Den));
+                    }
+
+                    break;
                 case DynamicAttachment dynamic:
                     dynamics.Add(new DynamicMark(dynamic.Target, (Dynamic)(int)dynamic.Level));
                     break;
@@ -87,7 +99,35 @@ public sealed record PerformanceHints(
             }
         }
 
-        return new PerformanceHints(dynamics.ToImmutable(), articulations.ToImmutable(), []);
+        return new PerformanceHints(dynamics.ToImmutable(), articulations.ToImmutable(), tempos.ToImmutable());
+    }
+
+    private static Dictionary<EventId, Fraction> EventPositions(Score score)
+    {
+        Dictionary<EventId, Fraction> positions = [];
+        Fraction measureStart = Fraction.Zero;
+        for (int measure = 0; measure < score.Measures.Length; measure++)
+        {
+            foreach (KeyValuePair<StaffMeasureKey, StaffMeasure> entry in score.Content)
+            {
+                if (entry.Key.MeasureIndex != measure)
+                {
+                    continue;
+                }
+
+                foreach (Voice voice in entry.Value.Voices)
+                {
+                    foreach (MusicEvent musicEvent in voice.Events)
+                    {
+                        positions.TryAdd(musicEvent.Id, measureStart + musicEvent.Onset);
+                    }
+                }
+            }
+
+            measureStart += score.Measures[measure].TimeSignature.Length;
+        }
+
+        return positions;
     }
 }
 

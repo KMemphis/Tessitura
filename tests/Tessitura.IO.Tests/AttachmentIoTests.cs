@@ -73,6 +73,34 @@ public sealed class AttachmentIoTests
         Assert.Equal(DynamicLevel.Ff, Assert.Single(again.AttachmentList.OfType<DynamicAttachment>()).Level);
     }
 
+    [Fact]
+    public void TempoTextAndChordSymbolsSurviveTessAndMusicXml()
+    {
+        (Score score, Chord[] notes) = Create();
+        EditContext context = new(0, 0, 1);
+        Score marked = new AddAttachmentCommand(new TempoAttachment(notes[0].Id, new Duration(NoteValue.Eighth, 1), 66.5)).Apply(score, context);
+        marked = new AddAttachmentCommand(new TextAttachment(notes[1].Id, "dolce")).Apply(marked, context);
+        marked = new AddAttachmentCommand(new ChordSymbolAttachment(notes[0].Id, Step.F, 1, "m7", Step.A)).Apply(marked, context);
+        string path = Path.Combine(Path.GetTempPath(), $"tessitura-att2-{Guid.NewGuid():N}.tess");
+        try
+        {
+            TessFile.Save(path, marked, new Tessitura.Engraving.Style { StaffLineThickness = 0.1 });
+            Assert.Equal(marked.AttachmentList.OrderBy(a => a.ToString()), TessFile.Open(path).Score.AttachmentList.OrderBy(a => a.ToString()));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        System.Xml.Linq.XDocument document = MusicXmlExporter.ToDocument(marked);
+        Assert.Empty(MusicXmlSchema.Validate(document));
+        Score again = MusicXmlImporter.Import(document).Score;
+        Assert.Equal(3, again.AttachmentList.Length);
+        Assert.Contains(again.AttachmentList.OfType<TempoAttachment>(), t => t.Beat == new Duration(NoteValue.Eighth, 1) && t.Bpm == 66.5);
+        Assert.Contains(again.AttachmentList.OfType<TextAttachment>(), t => t.Text == "dolce");
+        Assert.Contains(again.AttachmentList.OfType<ChordSymbolAttachment>(), c => c.Display == "F♯m7/A");
+    }
+
     private static (Score, Chord[]) Create()
     {
         Chord[] notes = [.. Enumerable.Range(0, 2).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 4), new Duration(NoteValue.Quarter, 0),

@@ -49,6 +49,10 @@ internal static class ScoreMapper
             {
                 ArticulationAttachment a => new AttachmentDto("articulation", a.Target.Value, (int)a.Kind),
                 DynamicAttachment d => new AttachmentDto("dynamic", d.Target.Value, (int)d.Level),
+                TempoAttachment t => new AttachmentDto("tempo", t.Target.Value, (int)t.Beat.Value, t.Beat.Dots, t.Bpm),
+                TextAttachment x => new AttachmentDto("text", x.Target.Value, 0, Text: x.Text),
+                ChordSymbolAttachment c => new AttachmentDto("chord", c.Target.Value, (int)c.Root, c.RootAlter, Text: c.Quality,
+                    Value3: c.BassAlter, Value4: c.Bass is Step bass ? (int)bass : -1),
                 _ => throw new InvalidOperationException($"Attachment {attachment.GetType().Name} cannot be saved."),
             });
         }
@@ -147,6 +151,10 @@ internal static class ScoreMapper
         {
             "articulation" => (Attachment)new ArticulationAttachment(new EventId(a.Target), (ArticulationKind)a.Value),
             "dynamic" => new DynamicAttachment(new EventId(a.Target), (DynamicLevel)a.Value),
+            "tempo" => new TempoAttachment(new EventId(a.Target), new Duration((NoteValue)a.Value, a.Value2), a.Number),
+            "text" => new TextAttachment(new EventId(a.Target), a.Text ?? ""),
+            "chord" => new ChordSymbolAttachment(new EventId(a.Target), (Step)a.Value, a.Value2, a.Text ?? "",
+                a.Value4 >= 0 ? (Step)a.Value4 : null, a.Value3),
             _ => throw new InvalidDataException($"Unknown attachment kind '{a.Kind}'."),
         })];
         return new Score(new ScoreMetadata(dto.Title, dto.Composer), instruments.ToImmutable(),

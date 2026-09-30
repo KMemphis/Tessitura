@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using SkiaSharp;
 using Tessitura.Core;
+using Tessitura.Editing;
 
 namespace Tessitura.App;
 
@@ -25,6 +26,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private Popup? _viewSelectorPopup;
     private ActionRegistry? _actions;
     private CommandPalette? _commandPalette;
+    private TextPopover? _textPopover;
     private bool _isDarkTheme = true;
 
     /// <summary>Creates the main editor layout around an existing score canvas.</summary>
@@ -117,6 +119,9 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         actions.AddRange((ReadOnlySpan<ActionDefinition>)
         [
         new("command-palette.open", "Abrir paleta de comandos", "Ctrl+K", ToggleCommandPalette),
+        new("text.dynamic", "Escribir dinámica", "Shift+D", () => _textPopover?.Open(TextEntryKind.Dynamic)),
+        new("text.tempo", "Escribir tempo", "Shift+T", () => _textPopover?.Open(TextEntryKind.Tempo)),
+        new("text.text", "Escribir texto o cifrado", "Shift+X", () => _textPopover?.Open(TextEntryKind.Text)),
         new("view.page", "Vista de página", "Ctrl+Shift+1", () => Canvas.Focus()),
         new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",
@@ -234,8 +239,16 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         Grid.SetColumnSpan(_commandPalette, 3);
         _popupSurfaces.Add(_commandPalette);
         _layout.Children.Add(_commandPalette);
+        _textPopover = new TextPopover(_input, () => Canvas.Focus());
+        Grid.SetRowSpan(_textPopover, 4);
+        Grid.SetColumnSpan(_textPopover, 3);
+        _popupSurfaces.Add(_textPopover);
+        _layout.Children.Add(_textPopover);
         ApplyTheme();
     }
+
+    /// <summary>Gets the text popover, available once an action registry is attached.</summary>
+    public TextPopover? TextPopover => _textPopover;
 
     /// <summary>Gets the command palette, available once an action registry is attached.</summary>
     public CommandPalette? CommandPalette => _commandPalette;

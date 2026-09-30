@@ -23,7 +23,7 @@ internal sealed record InstrumentDto(string Name, List<StaffDto> Staves);
 
 internal sealed record MeasureDto(int Number, int Numerator, int Denominator, int Fifths);
 
-internal sealed record AttachmentDto(string Kind, Guid Target, int Value);
+internal sealed record AttachmentDto(string Kind, Guid Target, int Value, int Value2 = 0, double Number = 0, string? Text = null, int Value3 = 0, int Value4 = -1);
 
 internal sealed record ScoreDto(
     string Title, string Composer, List<InstrumentDto> Instruments,

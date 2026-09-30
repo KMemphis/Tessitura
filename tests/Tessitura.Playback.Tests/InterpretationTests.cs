@@ -237,3 +237,25 @@ public sealed class AttachedMarkInterpretationTests
         Assert.Equal([49, 49], result.Notes.Select(n => n.Velocity));
     }
 }
+
+public sealed class TempoAttachmentTests
+{
+    [Fact]
+    public void TempoAttachmentsBecomeTempoMarksAtTheirEventPositionInQuarterNotes()
+    {
+        Chord a = new(new EventId(Guid.NewGuid()), Fraction.Zero, new Duration(NoteValue.Whole, 0), [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Chord b = new(new EventId(Guid.NewGuid()), Fraction.Zero, new Duration(NoteValue.Whole, 0), [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto);
+        Score score = new(new ScoreMetadata("T", ""), [new Instrument("I", [new Staff("S")])],
+            [new Measure(1, new TimeSignature(4, 4)), new Measure(2, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [a])]))
+                .Add(new StaffMeasureKey(0, 1), new StaffMeasure([new Voice(1, [b])])),
+            [new TempoAttachment(a.Id, new Duration(NoteValue.Quarter, 0), 120), new TempoAttachment(b.Id, new Duration(NoteValue.Half, 0), 30)]);
+
+        Interpretation result = Interpreter.Interpret(score);
+
+        Assert.Equal(120, result.Tempo.QuarterNotesPerMinuteAt(Fraction.Zero));
+        Assert.Equal(60, result.Tempo.QuarterNotesPerMinuteAt(Fraction.One)); // half = 30 is 60 quarters per minute
+        Assert.Equal(2.0 + 4.0, result.Tempo.SecondsAt(new Fraction(2, 1)), precision: 9);
+    }
+}

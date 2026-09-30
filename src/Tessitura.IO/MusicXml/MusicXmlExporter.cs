@@ -306,7 +306,50 @@ public static class MusicXmlExporter
         List<XElement> written = [];
         foreach (Attachment attachment in attachments[musicEvent.Id])
         {
-            if (attachment is DynamicAttachment dynamic)
+            if (attachment is TempoAttachment tempo)
+            {
+                string unit = tempo.Beat.Value switch
+                {
+                    NoteValue.Whole => "whole", NoteValue.Half => "half", NoteValue.Eighth => "eighth",
+                    NoteValue.Sixteenth => "16th", _ => "quarter",
+                };
+                XElement metronome = new("metronome", new XElement("beat-unit", unit));
+                if (tempo.Beat.Dots > 0)
+                {
+                    metronome.Add(new XElement("beat-unit-dot"));
+                }
+
+                metronome.Add(new XElement("per-minute", tempo.Bpm.ToString("0.##", CultureInfo.InvariantCulture)));
+                measure.Add(new XElement("direction", new XAttribute("placement", "above"), new XElement("direction-type", metronome)));
+            }
+            else if (attachment is TextAttachment text)
+            {
+                measure.Add(new XElement("direction", new XAttribute("placement", "below"),
+                    new XElement("direction-type", new XElement("words", text.Text))));
+            }
+            else if (attachment is ChordSymbolAttachment symbol)
+            {
+                XElement root = new("root", new XElement("root-step", symbol.Root.ToString()));
+                if (symbol.RootAlter != 0)
+                {
+                    root.Add(new XElement("root-alter", symbol.RootAlter));
+                }
+
+                XElement harmony = new("harmony", root, new XElement("kind", new XAttribute("text", symbol.Quality), "other"));
+                if (symbol.Bass is Step bass)
+                {
+                    XElement bassElement = new("bass", new XElement("bass-step", bass.ToString()));
+                    if (symbol.BassAlter != 0)
+                    {
+                        bassElement.Add(new XElement("bass-alter", symbol.BassAlter));
+                    }
+
+                    harmony.Add(bassElement);
+                }
+
+                measure.Add(harmony);
+            }
+            else if (attachment is DynamicAttachment dynamic)
             {
                 measure.Add(new XElement("direction", new XAttribute("placement", "below"),
                     new XElement("direction-type", new XElement("dynamics", new XElement(dynamic.Level.ToString().ToLowerInvariant()))),

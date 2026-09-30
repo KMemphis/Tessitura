@@ -307,6 +307,33 @@ public abstract record Attachment(EventId Target);
 /// <param name="Kind">The articulation.</param>
 public sealed record ArticulationAttachment(EventId Target, ArticulationKind Kind) : Attachment(Target);
 
+/// <summary>A tempo that starts at an event: <c>Beat</c> = <c>Bpm</c> per minute.</summary>
+/// <param name="Target">The event where the tempo begins.</param>
+/// <param name="Beat">The beat unit, a quarter note for "q=120".</param>
+/// <param name="Bpm">The number of beat units per minute.</param>
+public sealed record TempoAttachment(EventId Target, Duration Beat, double Bpm) : Attachment(Target);
+
+/// <summary>Free text above or below the staff, such as an expression mark.</summary>
+/// <param name="Target">The event the text is attached to.</param>
+/// <param name="Text">The text.</param>
+public sealed record TextAttachment(EventId Target, string Text) : Attachment(Target);
+
+/// <summary>A chord symbol such as Cmaj7 or F#m7/A written above the staff.</summary>
+/// <param name="Target">The event the symbol is attached to.</param>
+/// <param name="Root">The root letter.</param>
+/// <param name="RootAlter">The root alteration in semitones.</param>
+/// <param name="Quality">The suffix, such as "maj7", "m", "7" or "sus4"; empty for a major triad.</param>
+/// <param name="Bass">The bass letter of a slash chord, if any.</param>
+/// <param name="BassAlter">The bass alteration.</param>
+public sealed record ChordSymbolAttachment(EventId Target, Step Root, int RootAlter, string Quality, Step? Bass = null, int BassAlter = 0)
+    : Attachment(Target)
+{
+    /// <summary>Gets the symbol as written: root, alteration, quality and optional bass.</summary>
+    public string Display => $"{Root}{Accidental(RootAlter)}{Quality}{(Bass is Step bass ? $"/{bass}{Accidental(BassAlter)}" : "")}";
+
+    private static string Accidental(int alter) => alter switch { > 0 => "♯", < 0 => "♭", _ => "" };
+}
+
 /// <summary>A dynamic level that starts at an event.</summary>
 /// <param name="Target">The event where the level begins.</param>
 /// <param name="Level">The level.</param>

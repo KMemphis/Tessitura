@@ -87,7 +87,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F4.2 · Grupos irregulares.** Tresillos, cinquillos y anidados, con corchete o número. *Hecho cuando:* la duración de cada grupo cuadra exactamente con `Fraction`.
 - [x] **F4.3 · Acordes.** Cabezas en segundas, apilado de alteraciones en columnas y puntillos en acordes. *Hecho cuando:* imágenes de referencia de clusters y acordes con cinco alteraciones.
 - [x] **F4.4 · Articulaciones y ornamentos.** Colocación según plica y orden de apilado de Behind Bars. *Hecho cuando:* imágenes de referencia aprobadas.
-- [ ] **F4.5 · Dinámicas y popovers.** Dinámicas, tempo y texto con `Shift+D`, `Shift+T` y `Shift+X`. *Hecho cuando:* escribir `mf`, `q=120` o `Cmaj7` crea el elemento correcto.
+- [x] **F4.5 · Dinámicas y popovers.** Dinámicas, tempo y texto con `Shift+D`, `Shift+T` y `Shift+X`. *Hecho cuando:* escribir `mf`, `q=120` o `Cmaj7` crea el elemento correcto.
 - [ ] **F4.6 · Ligaduras de expresión.** Curvas Bézier que esquivan cabezas, plicas y articulaciones, incluso entre sistemas. *Hecho cuando:* imágenes de referencia de ligaduras largas, cortas y partidas.
 - [ ] **F4.7 · Líneas.** Reguladores, octavas y pedal como spanners anclados a eventos. *Hecho cuando:* sobreviven a cortes de sistema y a ediciones de la música anclada.
 - [ ] **F4.8 · Skylines completos.** Colocación de todos los elementos contra los perfiles y distribución vertical con ellos. *Hecho cuando:* ningún elemento se solapa en el catálogo de referencia.
