@@ -41,6 +41,40 @@ public sealed class ScorePageComposerTests
             glyph.Codepoint == metadata.GetGlyphCodepoint("restHalf"));
     }
 
+    [Theory]
+    [InlineData(4, 4, NoteValue.Whole, 0)]
+    [InlineData(3, 4, NoteValue.Half, 1)]
+    public void WholeBarRestUsesTheWholeRestGlyphAtTheMiddleOfTheMeasure(
+        int numerator, int denominator, NoteValue restValue, int dots)
+    {
+        SmuflMetadata metadata = LoadMetadata();
+        Style style = Style.CreateDefault(metadata);
+        ScorePageComposer composer = new(metadata, style);
+        EventId restId = new(Guid.NewGuid());
+        Rest rest = new(restId, Fraction.Zero, new Duration(restValue, dots));
+        Score score = new(new ScoreMetadata("Empty", ""),
+            [new Instrument("Piano", [new Staff("Treble")])],
+            [new Measure(1, new TimeSignature(numerator, denominator))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(
+                new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, [rest])])));
+        ScoreLayoutResult layout = new IncrementalScoreLayouter(metadata).Layout(
+            score, style, composer.GetAvailableWidth(score));
+
+        ScorePageComposition composition = composer.Compose(score, layout, 0);
+        DisplayGlyph restGlyph = Assert.Single(composition.Page.Primitives.OfType<DisplayGlyph>(),
+            glyph => glyph.ElementId.Value == restId.Value);
+        double[] barlines = composition.Page.Primitives.OfType<DisplayLine>()
+            .Where(line => Math.Abs(line.Start.X - line.End.X) < 1e-8 &&
+                Math.Abs(line.Start.Y - line.End.Y) >= 3.9)
+            .Select(line => line.Start.X).Order().ToArray();
+
+        Assert.Equal(metadata.GetGlyphCodepoint("restWhole"), restGlyph.Codepoint);
+        Assert.Equal(2, barlines.Length);
+        double restCenter = restGlyph.Bounds.X + restGlyph.Bounds.Width / 2;
+        Assert.InRange(Math.Abs(restCenter - (barlines[0] + barlines[1]) / 2),
+            0, style.MinimumRhythmicGap);
+    }
+
     [Fact]
     public void UsesStaffClefAndKeySignatureForHeaderAndAccidentalPlacement()
     {

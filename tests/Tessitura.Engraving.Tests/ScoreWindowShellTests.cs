@@ -18,7 +18,7 @@ public sealed class ScoreWindowShellTests
         using ScoreWindowShell shell = new(canvas, CreateInput());
 
         Assert.Same(canvas, shell.Canvas);
-        Assert.Equal("Archivo", shell.FileMenuButton.Content);
+        Assert.Equal("Archivo ▾", shell.FileMenuButton.Content);
         Assert.Equal("Página ▾", shell.ViewSelectorButton.Content);
         Assert.Equal(0, Grid.GetRow(shell.TopBar));
         Assert.Equal(1, Grid.GetRow(shell.LeftPanel));
@@ -29,6 +29,27 @@ public sealed class ScoreWindowShellTests
         Assert.Equal(2, Grid.GetColumn(shell.RightPanel));
         Assert.Equal(2, Grid.GetRow(shell.BottomPanel));
         Assert.Equal(3, Grid.GetRow(shell.StatusBar));
+    }
+
+    [Fact]
+    public void ToolbarAndAdvancedPaletteExposeWorkingControls()
+    {
+        using ScoreWindowShell shell = new(new ScoreCanvas(), CreateInput());
+
+        Assert.True(shell.FileMenuButton.IsEnabled);
+        Assert.True(shell.EditMenuButton.IsEnabled);
+        Assert.True(shell.PlayButton.IsEnabled);
+        Assert.True(shell.StopButton.IsEnabled);
+
+        ScrollViewer scroller = Assert.IsType<ScrollViewer>(shell.LeftPanel.Child);
+        StackPanel groups = Assert.IsType<StackPanel>(scroller.Content);
+        string[] buttons = groups.Children.OfType<WrapPanel>()
+            .SelectMany(row => row.Children.OfType<Button>())
+            .Select(button => Assert.IsType<string>(button.Content)).ToArray();
+        Assert.Contains("Dinámica…", buttons);
+        Assert.Contains("Staccato", buttons);
+        Assert.Contains("Crescendo", buttons);
+        Assert.Contains("Texto…", buttons);
     }
 
     [Fact]

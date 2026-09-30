@@ -67,7 +67,15 @@ public sealed class MeasureWidthCalculator
 
         if (columns.Count == 0)
         {
-            return new SystemBreakMeasure(4, 4, 1);
+            return new SystemBreakMeasure(4, 4, 4);
+        }
+
+        if (columns.Count == 1)
+        {
+            // Behind Bars, Rests > Whole-bar rests: a single full-bar symbol needs a distinct, readable measure span.
+            double minimum = columns[0].LeftExtent + columns[0].RightExtent;
+            double ideal = Math.Max(4, minimum);
+            return new SystemBreakMeasure(minimum, ideal, ideal);
         }
 
         Fraction shortest = columns[0].Duration;

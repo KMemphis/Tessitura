@@ -133,6 +133,20 @@ public sealed class IncrementalScoreLayouterTests
         Assert.True(sharpWidth.MinimumWidth > naturalWidth.MinimumWidth);
     }
 
+    [Fact]
+    public void EmptyMeasureKeepsEnoughWidthForAVisibleWholeBarRest()
+    {
+        SmuflMetadata metadata = LoadMetadata();
+        MeasureWidthCalculator calculator = new(metadata);
+        Score score = CreateSingleEventScore(
+            new Rest(new EventId(Guid.NewGuid()), Fraction.Zero, new Duration(NoteValue.Whole, 0)));
+
+        SystemBreakMeasure width = calculator.Calculate(score, 0, Style.CreateDefault(metadata));
+
+        Assert.True(width.IdealWidth >= 4);
+        Assert.True(width.Elasticity >= 4);
+    }
+
     private static Score CreateReferenceScore(int staffCount, int measureCount)
     {
         ImmutableArray<Staff>.Builder staves = ImmutableArray.CreateBuilder<Staff>(staffCount);

@@ -738,6 +738,21 @@ public sealed class ScorePageComposer
                 : null;
             double restShift = !manyVoices ? 0 : voice.Number switch { 1 => -2, 2 => 2, 3 => -4, _ => 4 };
             cancellationToken.ThrowIfCancellationRequested();
+            if (voice.Events.Length == 1 && voice.Events[0] is Rest fullBarRest &&
+                fullBarRest.Onset == Fraction.Zero &&
+                fullBarRest.Length == score.Measures[measureIndex].TimeSignature.Length)
+            {
+                // Behind Bars, Rests > Whole-bar rests: center the whole-rest symbol between the barlines.
+                double centerX = measureStartX + measureWidth / 2;
+                SmuflBoundingBox box = _metadata.GetBoundingBox("restWhole");
+                double originX = centerX - (box.SouthWest.X + box.NorthEast.X) / 2;
+                articulations.EventX[fullBarRest.Id] = centerX;
+                AddAnnotations(primitives, fullBarRest.Id, centerX, staffTop, articulations);
+                primitives.AddRange(placer.PlaceRest(fullBarRest.Id,
+                    new Duration(NoteValue.Whole, 0), originX, staffTop, restShift));
+                continue;
+            }
+
             foreach (MusicEvent topLevel in voice.Events)
             {
                 cancellationToken.ThrowIfCancellationRequested();

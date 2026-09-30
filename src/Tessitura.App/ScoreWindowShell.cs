@@ -23,6 +23,8 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private readonly List<(Button Button, bool RequiresNote)> _inspectorButtons = [];
     private readonly List<Control> _themedControls = [];
     private readonly List<Border> _popupSurfaces = [];
+    private Popup? _fileMenuPopup;
+    private Popup? _editMenuPopup;
     private Popup? _viewMenuPopup;
     private Popup? _viewSelectorPopup;
     private ActionRegistry? _actions;
@@ -96,6 +98,15 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     /// <summary>Gets the visible file menu label.</summary>
     public Button FileMenuButton { get; private set; } = null!;
 
+    /// <summary>Gets the visible edit menu label.</summary>
+    public Button EditMenuButton { get; private set; } = null!;
+
+    /// <summary>Gets the visible play or pause button.</summary>
+    public Button PlayButton { get; private set; } = null!;
+
+    /// <summary>Gets the visible stop button.</summary>
+    public Button StopButton { get; private set; } = null!;
+
     /// <summary>Gets the current view selector.</summary>
     public Button ViewSelectorButton { get; private set; } = null!;
 
@@ -130,6 +141,8 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         actions.AddRange((ReadOnlySpan<ActionDefinition>)
         [
         new("command-palette.open", "Abrir paleta de comandos", "Ctrl+K", ToggleCommandPalette),
+        new("file.open-menu", "Abrir menú Archivo", "Ctrl+Shift+F", () => TogglePopup(_fileMenuPopup)),
+        new("edit.open-menu", "Abrir menú Editar", "Ctrl+Shift+E", () => TogglePopup(_editMenuPopup)),
         new("text.dynamic", "Escribir dinámica", "Shift+D", () => _textPopover?.Open(TextEntryKind.Dynamic)),
         new("text.tempo", "Escribir tempo", "Shift+T", () => _textPopover?.Open(TextEntryKind.Tempo)),
         new("text.text", "Escribir texto o cifrado", "Shift+X", () => _textPopover?.Open(TextEntryKind.Text)),
@@ -299,9 +312,26 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     {
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10,
             VerticalAlignment = VerticalAlignment.Center };
-        FileMenuButton = CreateButton("Archivo", "Archivo", null, false);
+        FileMenuButton = CreateButton("Archivo ▾", "Abrir menú Archivo", "file.open-menu");
         row.Children.Add(FileMenuButton);
-        row.Children.Add(CreateButton("Editar", "Editar", null, false));
+        _fileMenuPopup = CreatePopup(FileMenuButton,
+        [
+            CreateButton("Guardar", "Guardar la partitura", "file.save"),
+            CreateButton("Guardar como…", "Guardar con otro nombre", "file.save-as"),
+            CreateButton("Exportar PDF…", "Exportar la partitura", "file.export-pdf"),
+            CreateButton("Cerrar", "Volver al inicio", "file.close"),
+        ]);
+        row.Children.Add(_fileMenuPopup);
+        EditMenuButton = CreateButton("Editar ▾", "Abrir menú Editar", "edit.open-menu");
+        row.Children.Add(EditMenuButton);
+        _editMenuPopup = CreatePopup(EditMenuButton,
+        [
+            CreateButton("Deshacer", "Deshacer la última edición", "score.undo"),
+            CreateButton("Rehacer", "Rehacer la última edición", "score.redo"),
+            CreateButton("Copiar", "Copiar la selección", "edit.copy"),
+            CreateButton("Pegar", "Pegar en el cursor", "edit.paste"),
+        ]);
+        row.Children.Add(_editMenuPopup);
         Button viewMenu = CreateButton("Ver ▾", "Abrir menú Ver", "view.open-menu");
         row.Children.Add(viewMenu);
         _viewMenuPopup = CreatePopup(viewMenu,
@@ -326,9 +356,10 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             .. CreatePartViewButtons(),
         ]);
         row.Children.Add(_viewSelectorPopup);
-        row.Children.Add(CreateButton("◀", "Reproducción anterior", null, false));
-        row.Children.Add(CreateButton("▶", "Reproducir", null, false));
-        row.Children.Add(CreateButton("■", "Detener", null, false));
+        PlayButton = CreateButton("▶", "Reproducir o pausar", "playback.toggle");
+        row.Children.Add(PlayButton);
+        StopButton = CreateButton("■", "Detener y volver al inicio", "playback.stop");
+        row.Children.Add(StopButton);
         row.Children.Add(CreateButton("−", "Alejar", "view.zoom-out"));
         row.Children.Add(CreateButton("+", "Acercar", "view.zoom-in"));
         row.Children.Add(CreateButton("Ajustar", "Ajustar página", "view.fit-page"));
@@ -379,24 +410,50 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
             ("♮", "palette.accidental.natural"),
             ("♯", "palette.accidental.sharp"),
         ]);
-        foreach (string category in new[] { "Dinámicas", "Articulaciones", "Líneas", "Texto" })
-        {
-            stack.Children.Add(CreateLabel(category, 13));
-        }
+        AddPaletteGroup(stack, "Dinámicas",
+        [
+            ("Dinámica…", "text.dynamic"),
+            ("Tempo…", "text.tempo"),
+        ]);
+        AddPaletteGroup(stack, "Articulaciones",
+        [
+            ("Staccato", "articulation.staccato"),
+            ("Tenuto", "articulation.tenuto"),
+            ("Acento", "articulation.accent"),
+            ("Marcato", "articulation.marcato"),
+            ("Calderón", "articulation.fermata"),
+            ("Trino", "articulation.trill"),
+        ]);
+        AddPaletteGroup(stack, "Líneas",
+        [
+            ("Crescendo", "spanner.crescendo"),
+            ("Diminuendo", "spanner.diminuendo"),
+            ("8va", "spanner.octaveup"),
+            ("8vb", "spanner.octavedown"),
+            ("Pedal", "spanner.pedal"),
+            ("Ligadura", "spanner.slur"),
+        ]);
+        AddPaletteGroup(stack, "Texto",
+        [
+            ("Texto…", "text.text"),
+            ("Letra…", "text.lyric"),
+        ]);
 
-        return new Border { Width = 200, Child = new ScrollViewer { Content = stack } };
+        return new Border { Width = 220, Child = new ScrollViewer { Content = stack } };
     }
 
     private void AddPaletteGroup(StackPanel parent, string title,
         (string Label, string ActionId)[] items)
     {
         parent.Children.Add(CreateLabel(title, 14, FontWeight.SemiBold));
-        WrapPanel row = new() { Orientation = Orientation.Horizontal, ItemWidth = 42, ItemHeight = 32 };
+        WrapPanel row = new() { Orientation = Orientation.Horizontal };
         foreach ((string label, string actionId) in items)
         {
             Button button = CreateButton(label, label, actionId);
             button.MinWidth = 42;
-            button.Padding = new Thickness(2);
+            button.MinHeight = 32;
+            button.Margin = new Thickness(1);
+            button.Padding = new Thickness(6, 2);
             row.Children.Add(button);
         }
 
@@ -571,9 +628,19 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     {
         if (_actions?.TryExecute(actionId) == true)
         {
-            if (actionId is "view.open-menu" or "view.open-selector")
+            if (actionId is "file.open-menu" or "edit.open-menu" or "view.open-menu" or "view.open-selector")
             {
                 return;
+            }
+
+            if (_fileMenuPopup is not null)
+            {
+                _fileMenuPopup.IsOpen = false;
+            }
+
+            if (_editMenuPopup is not null)
+            {
+                _editMenuPopup.IsOpen = false;
             }
 
             if (_viewMenuPopup is not null)
@@ -586,7 +653,10 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
                 _viewSelectorPopup.IsOpen = false;
             }
 
-            Canvas.Focus();
+            if (!actionId.StartsWith("text.", StringComparison.Ordinal))
+            {
+                Canvas.Focus();
+            }
         }
     }
 

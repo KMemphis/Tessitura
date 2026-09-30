@@ -62,15 +62,13 @@ internal sealed class EditorSession : IDisposable
             new("midi.record.toggle", "Grabar entrada MIDI con metrónomo", "Ctrl+Alt+R", ToggleMidiRecording),
             new("file.close", "Cerrar y volver al inicio", "Ctrl+W", closeToStart),
         ];
-        string soundFont = Path.Combine(assetsPath, "..", "soundfonts", "default.sf2");
+        string? soundFont = null;
         _playback = new PlaybackController(_input, rate =>
         {
-            if (!File.Exists(soundFont))
-            {
-                throw new FileNotFoundException("No SoundFont is installed (assets/soundfonts/default.sf2).", soundFont);
-            }
-
-            return new MeltySynth.Synthesizer(new MeltySynth.SoundFont(soundFont), new MeltySynth.SynthesizerSettings(rate));
+            soundFont ??= BundledSoundFont.EnsureAvailable(AppContext.BaseDirectory,
+                Path.Combine(Path.GetDirectoryName(recoveryDirectory)!, "soundfonts"));
+            return new MeltySynth.Synthesizer(new MeltySynth.SoundFont(soundFont),
+                new MeltySynth.SynthesizerSettings(rate));
         }, () => new Tessitura.Playback.Audio.MiniAudioOutput());
         _playhead = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _stepInput = new MidiStepInput(_input);

@@ -10,6 +10,8 @@
     <Content Include="../../assets/fonts/Bravura.json" Link="assets/fonts/Bravura.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../assets/fonts/smufl_glyph_names.json" Link="assets/fonts/smufl_glyph_names.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../assets/fonts/OFL.txt" Link="assets/fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/soundfonts/default.sf2.br" Link="assets/soundfonts/default.sf2.br" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/soundfonts/LICENSE.txt" Link="assets/soundfonts/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Tessitura.App/Tessitura.App.csproj" />

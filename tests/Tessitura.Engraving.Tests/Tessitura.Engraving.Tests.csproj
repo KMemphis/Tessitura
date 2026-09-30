@@ -8,6 +8,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <Content Include="../assets/sf_spec_test.sf2" Link="sf_spec_test.sf2" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/soundfonts/default.sf2.br" Link="assets/soundfonts/default.sf2.br" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Tessitura.Engraving/Tessitura.Engraving.csproj" />
     <ProjectReference Include="../../src/Tessitura.Smufl/Tessitura.Smufl.csproj" />
     <ProjectReference Include="../../src/Tessitura.App/Tessitura.App.csproj" />
