@@ -126,3 +126,9 @@
 - Se añadió en Engraving un resolutor que sigue la altura escrita por paso y octava, la armadura vigente y el estado de cada compás. Una continuación de ligadura no repite el signo y establece el estado para notas posteriores. No se modificó el modelo de dominio de Core.
 - Pasaron 18 escenarios, incluidos becuadros de cancelación, repetición dentro y fuera del compás, armaduras con sostenidos y bemoles, cambios de armadura, enarmonía, octavas independientes y ligaduras. Dos casos adicionales rechazan armaduras fuera de siete alteraciones.
 - Las reglas se documentaron en código con las secciones «Accidentals and Key Signatures» y «Ties» de [*Behind Bars*](https://behindbarsnotation.co.uk/contents/toc.pdf). `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 62 pruebas sin fallos ni omisiones. Siguiente tarea: F1.6, plicas y agrupación automática de barras.
+
+## 2026-09-29 · F1.6 Plicas y barras automáticas
+
+- Se eligió plica arriba por debajo de la línea central y abajo desde la línea central. La agrupación usa `Fraction` para duraciones y límites: pulso de negra en 2/4 y 3/4, medio compás en 4/4 y 2/2, y negra con puntillo en 6/8 y 9/8.
+- Trece pruebas nuevas cubren los seis compases, cinco posiciones de plica y cortes por silencio, hueco y nota larga. La división de 4/4 en medios compases sigue [*Behind Bars*, «Metre > Beaming according to the metre», p. 153](https://www.behindbarsnotation.co.uk/contents/sample_pages.pdf).
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 75 pruebas sin fallos ni omisiones. Siguiente tarea: F1.7, segmentos rítmicos.
