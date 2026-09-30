@@ -115,7 +115,37 @@ public sealed class ScorePageComposer
     /// <param name="cancellationToken">Cancels composition without returning partial primitives.</param>
     /// <returns>The display page and its score-system location.</returns>
     public ScorePageComposition Compose(Score score, ScoreLayoutResult layout, int measureIndex,
-        EngravingCursor? cursor = null, CancellationToken cancellationToken = default)
+        EngravingCursor? cursor = null, CancellationToken cancellationToken = default) =>
+        ComposeCore(score, layout, measureIndex, cursor, cancellationToken,
+            ImmutableArray<MultiMeasureRestGroup>.Empty);
+
+    /// <summary>Composes a linked instrument part and groups its consecutive full-measure rests.</summary>
+    /// <param name="sourceScore">The latest master score snapshot.</param>
+    /// <param name="part">The linked part view to compose.</param>
+    /// <param name="layout">A layout calculated for the projected part score.</param>
+    /// <param name="measureIndex">The part measure whose system should be composed.</param>
+    /// <param name="cursor">The optional musical cursor to place on the page.</param>
+    /// <param name="cancellationToken">Cancels composition without returning partial primitives.</param>
+    /// <returns>The part's display page and system location.</returns>
+    public ScorePageComposition ComposePart(Score sourceScore, ScorePartView part,
+        ScoreLayoutResult layout, int measureIndex, EngravingCursor? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourceScore);
+        ArgumentNullException.ThrowIfNull(part);
+        Score partScore = ScorePartProjector.Project(sourceScore, part);
+        if (partScore.Instruments.Length != 1)
+        {
+            throw new ArgumentException("A part layout must contain exactly one instrument.", nameof(part));
+        }
+
+        return ComposeCore(partScore, layout, measureIndex, cursor, cancellationToken,
+            MultiMeasureRestGrouper.FindGroups(partScore));
+    }
+
+    private ScorePageComposition ComposeCore(Score score, ScoreLayoutResult layout, int measureIndex,
+        EngravingCursor? cursor, CancellationToken cancellationToken,
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(layout);
@@ -170,7 +200,8 @@ public sealed class ScorePageComposer
                 continue;
             }
 
-            DrawSystem(primitives, score, layout, pageSystemIndex, placement, staffCount, placer, state, leftMargin, cancellationToken);
+            DrawSystem(primitives, score, layout, pageSystemIndex, placement, staffCount, placer, state,
+                leftMargin, cancellationToken, multiMeasureRestGroups);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -186,11 +217,25 @@ public sealed class ScorePageComposer
     // Draws one system (all its staves, marks and spanners) into the list, returning nothing: the caller owns the list.
     private void DrawSystem(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, ScoreLayoutResult layout,
         int pageSystemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer, SystemState state,
-        double leftMargin, CancellationToken cancellationToken)
+        double leftMargin, CancellationToken cancellationToken,
+        ImmutableArray<MultiMeasureRestGroup> multiMeasureRestGroups)
     {
         EventId staffLineId = new(Guid.Empty);
         SystemLine pageSystem = layout.Systems[pageSystemIndex];
         ImmutableArray<double> measureWidths = GetDisplayMeasureWidths(score, layout, pageSystem);
+        ImmutableArray<MultiMeasureRestSegment> restSegments = BuildMultiMeasureRestSegments(
+            multiMeasureRestGroups, pageSystem.Range);
+        int[] restSegmentByLocalMeasure = new int[pageSystem.Range.Count];
+        Array.Fill(restSegmentByLocalMeasure, -1);
+        for (int segmentIndex = 0; segmentIndex < restSegments.Length; segmentIndex++)
+        {
+            MultiMeasureRestSegment segment = restSegments[segmentIndex];
+            for (int offset = 0; offset < segment.MeasureCount; offset++)
+            {
+                restSegmentByLocalMeasure[segment.StartLocalMeasure + offset] = segmentIndex;
+            }
+        }
+
         SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount);
         double musicStartX = leftMargin + pageHeader.MusicStartX;
         double systemWidth = Sum(measureWidths);
@@ -223,7 +268,17 @@ public sealed class ScorePageComposer
                 cancellationToken.ThrowIfCancellationRequested();
                 int scoreMeasureIndex = pageSystem.Range.StartIndex + localMeasure;
                 double measureWidth = measureWidths[localMeasure];
-                if (score.Content.TryGetValue(new StaffMeasureKey(staffIndex, scoreMeasureIndex),
+                int restSegmentIndex = restSegmentByLocalMeasure[localMeasure];
+                if (restSegmentIndex >= 0)
+                {
+                    MultiMeasureRestSegment segment = restSegments[restSegmentIndex];
+                    if (localMeasure == segment.StartLocalMeasure)
+                    {
+                        DrawMultiMeasureRest(primitives, segment, measureWidths,
+                            measureStartX, staffTop);
+                    }
+                }
+                else if (score.Content.TryGetValue(new StaffMeasureKey(staffIndex, scoreMeasureIndex),
                     out StaffMeasure? staffMeasure))
                 {
                     AddStaffMeasure(primitives, placer, score, staffMeasure,
@@ -232,9 +287,15 @@ public sealed class ScorePageComposer
                 }
 
                 measureStartX += measureWidth;
-                AddMeasureBoundary(primitives, score, staffLineId,
-                    scoreMeasureIndex + 1, measureStartX, staffTop,
-                    _style.StaffLineThickness);
+                bool restGroupContinues = restSegmentIndex >= 0 &&
+                    localMeasure < restSegments[restSegmentIndex].StartLocalMeasure +
+                    restSegments[restSegmentIndex].MeasureCount - 1;
+                if (!restGroupContinues)
+                {
+                    AddMeasureBoundary(primitives, score, staffLineId,
+                        scoreMeasureIndex + 1, measureStartX, staffTop,
+                        _style.StaffLineThickness);
+                }
             }
 
             for (int tagged = staffStart; tagged < primitives.Count; tagged++)
@@ -249,6 +310,53 @@ public sealed class ScorePageComposer
         AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
         DrawRepeatAnnotations(primitives, score, pageSystem, placement,
             measureWidths, musicStartX, staffCount);
+    }
+
+    private static ImmutableArray<MultiMeasureRestSegment> BuildMultiMeasureRestSegments(
+        ImmutableArray<MultiMeasureRestGroup> groups, SystemLineMeasureRange range)
+    {
+        ImmutableArray<MultiMeasureRestSegment>.Builder segments =
+            ImmutableArray.CreateBuilder<MultiMeasureRestSegment>();
+        int systemEnd = range.StartIndex + range.Count;
+        foreach (MultiMeasureRestGroup group in groups)
+        {
+            int groupEnd = group.StartMeasure + group.MeasureCount;
+            int segmentStart = Math.Max(group.StartMeasure, range.StartIndex);
+            int segmentEnd = Math.Min(groupEnd, systemEnd);
+            int segmentCount = segmentEnd - segmentStart;
+            if (segmentCount >= 2)
+            {
+                segments.Add(new MultiMeasureRestSegment(segmentStart - range.StartIndex,
+                    segmentCount, group.MeasureCount, segmentStart == group.StartMeasure));
+            }
+        }
+
+        return segments.ToImmutable();
+    }
+
+    private void DrawMultiMeasureRest(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        MultiMeasureRestSegment segment, ImmutableArray<double> measureWidths, double startX, double staffTop)
+    {
+        double width = 0;
+        for (int index = 0; index < segment.MeasureCount; index++)
+        {
+            width += measureWidths[segment.StartLocalMeasure + index];
+        }
+
+        double left = startX + 0.45;
+        double right = startX + width - 0.45;
+        double centerY = staffTop + 2;
+        double thickness = Math.Max(0.3, _style.StaffLineThickness * 3);
+        // Behind Bars, Rests > Multi-bar rests: a centered count and continuous bar represent the silent measures.
+        AddLine(primitives, new ElementId(Guid.Empty), left, centerY, right, centerY, thickness);
+        AddLine(primitives, new ElementId(Guid.Empty), left, centerY - 0.35, left, centerY + 0.35, thickness);
+        AddLine(primitives, new ElementId(Guid.Empty), right, centerY - 0.35, right, centerY + 0.35, thickness);
+        if (segment.ShowCount)
+        {
+            string label = segment.TotalMeasureCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            double labelX = startX + (width - label.Length * 0.65) / 2;
+            AddText(primitives, new ElementId(Guid.Empty), label, labelX, staffTop + 1.25, 1.2);
+        }
     }
 
     private void DrawRepeatAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives,
@@ -1635,7 +1743,8 @@ public sealed class ScorePageComposer
             SystemVerticalPlacement placement = provisional.Systems[systemIndex];
             ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
             SystemState scratch = new(attachments, lyricAnchors);
-            DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch, leftMargin, cancellationToken);
+            DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch,
+                leftMargin, cancellationToken, ImmutableArray<MultiMeasureRestGroup>.Empty);
             double[] top = new double[staffCount];
             double[] bottom = new double[staffCount];
             Array.Fill(top, 0.5);
@@ -1685,4 +1794,7 @@ public sealed class ScorePageComposer
         return new VerticalPageLayouter().Layout(verticalSystems, pageHeight,
             pageMargin, pageMargin, systemGap: 2);
     }
+
+    private readonly record struct MultiMeasureRestSegment(int StartLocalMeasure,
+        int MeasureCount, int TotalMeasureCount, bool ShowCount);
 }

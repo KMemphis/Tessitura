@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Tessitura.Core;
+using Tessitura.Editing;
 using Xunit;
 
 namespace Tessitura.Core.Tests;
@@ -64,6 +65,64 @@ public sealed class ScoreModelTests
 
         Assert.True(ScoreValidator.IsMeasureValid(score.Measures[0], score.Content[new StaffMeasureKey(0, 0)]));
     }
+
+    [Fact]
+    public void PartProjectionUsesTheEditedSnapshotAndRemapsItsStaffContent()
+    {
+        EventId first = new(Guid.NewGuid());
+        EventId second = new(Guid.NewGuid());
+        Score score = new(new ScoreMetadata("Symphony", "Composer"),
+            [
+                new Instrument("Flute", [new Staff("Flute")]),
+                new Instrument("Piano", [new Staff("Right"), new Staff("Left", Clef.Bass)]),
+            ],
+            [new Measure(1, new TimeSignature(4, 4))],
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), MakeQuarter(first, new Pitch(Step.C, 0, 5)))
+                .Add(new StaffMeasureKey(1, 0), MakeQuarter(second, new Pitch(Step.C, 0, 4)))
+                .Add(new StaffMeasureKey(2, 0), MakeQuarter(new EventId(Guid.NewGuid()), new Pitch(Step.C, 0, 3))));
+        ScorePartView part = new("Piano", [1]);
+        Score withPart = score with
+        {
+            Parts = [part],
+            Attachments =
+            [
+                new DynamicAttachment(first, DynamicLevel.F),
+                new DynamicAttachment(second, DynamicLevel.P),
+            ],
+            Spanners = [new Spanner(first, second, SpannerKind.Slur)],
+        };
+
+        Score edited = new ChangePitchCommand(second, 0, new Pitch(Step.G, 1, 4))
+            .Apply(withPart, new EditContext(1, 0, 1));
+        Score projected = ScorePartProjector.Project(edited, part);
+
+        Assert.Empty(projected.PartList);
+        Assert.Equal("Piano", Assert.Single(projected.Instruments).Name);
+        Assert.Equal(2, projected.Instruments[0].Staves.Length);
+        Assert.Equal(2, projected.Content.Count);
+        Assert.Equal(new DynamicAttachment(second, DynamicLevel.P), Assert.Single(projected.AttachmentList));
+        Assert.Empty(projected.SpannerList);
+        Assert.Contains(new StaffMeasureKey(0, 0), projected.Content.Keys);
+        Assert.Contains(new StaffMeasureKey(1, 0), projected.Content.Keys);
+        Assert.Equal(new Pitch(Step.G, 1, 4), Assert.IsType<Chord>(
+            projected.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]).Notes[0].Pitch);
+        Assert.Equal(new Pitch(Step.C, 0, 5), Assert.IsType<Chord>(
+            score.Content[new StaffMeasureKey(0, 0)].Voices[0].Events[0]).Notes[0].Pitch);
+    }
+
+    [Fact]
+    public void PartViewRejectsInvalidInstrumentSelections()
+    {
+        Assert.Throws<ArgumentException>(() => new ScorePartView(" ", [0]));
+        Assert.Throws<ArgumentException>(() => new ScorePartView("Flute", []));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ScorePartView("Flute", [-1]));
+        Assert.Throws<ArgumentException>(() => new ScorePartView("Flute", [0, 0]));
+    }
+
+    private static StaffMeasure MakeQuarter(EventId id, Pitch pitch) => new(
+        [new Voice(1, [new Chord(id, Fraction.Zero, new Duration(NoteValue.Quarter, 0), [new Note(pitch)], StemDirection.Auto),
+            new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Half, 1))])]);
 
     [Fact]
     public void RepeatInfoRejectsInvalidPassCountsEndingsAndNavigationMarks()

@@ -66,7 +66,9 @@ internal static class ScoreMapper
 
         return new ScoreDto(score.Metadata.Title, score.Metadata.Composer, instruments, measures, content,
             attachments.Count == 0 ? null : attachments,
-            score.SpannerList.IsEmpty ? null : [.. score.SpannerList.Select(s => new SpannerDto(s.Start.Value, s.End.Value, (int)s.Kind))]);
+            score.SpannerList.IsEmpty ? null : [.. score.SpannerList.Select(s => new SpannerDto(s.Start.Value, s.End.Value, (int)s.Kind))],
+            score.PartList.IsEmpty ? null : [.. score.PartList.Select(part =>
+                new ScorePartDto(part.Name, [.. part.InstrumentIndices]))]);
     }
 
     private static EventDto ToEventDto(MusicEvent musicEvent)
@@ -172,10 +174,13 @@ internal static class ScoreMapper
                 (LyricSyllabic)a.Value, (LyricExtender)a.Value2),
             _ => throw new InvalidDataException($"Unknown attachment kind '{a.Kind}'."),
         })];
+        ImmutableArray<ScorePartView> parts = [.. (dto.Parts ?? []).Select(part =>
+            new ScorePartView(part.Name, [.. part.InstrumentIndices]))];
         return new Score(new ScoreMetadata(dto.Title, dto.Composer), instruments.ToImmutable(),
             measures.ToImmutable(), content.ToImmutable(), attachments.IsEmpty ? default : attachments,
             dto.Spanners is { Count: > 0 } spanners
                 ? [.. spanners.Select(s => new Spanner(new EventId(s.Start), new EventId(s.End), (SpannerKind)s.Kind))]
-                : default);
+                : default,
+            parts.IsEmpty ? default : parts);
     }
 }

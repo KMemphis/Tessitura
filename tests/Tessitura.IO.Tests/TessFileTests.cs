@@ -29,6 +29,54 @@ public sealed class TessFileTests
     }
 
     [Fact]
+    public void PartViewsSurviveATessRoundTripWithoutChangingTheFormatVersion()
+    {
+        using TempDirectory directory = new();
+        string path = Path.Combine(directory.Path, "parts.tess");
+        ScorePartView part = new("Piano", [0]);
+        Score score = CreateScore() with { Parts = [part] };
+
+        TessFile.Save(path, score, CreateStyle());
+        TessDocument opened = TessFile.Open(path);
+
+        Assert.Equal(TessMigrator.CurrentVersion, opened.Manifest.FormatVersion);
+        ScorePartView saved = Assert.Single(opened.Score.Parts);
+        Assert.Equal("Piano", saved.Name);
+        Assert.Equal([0], saved.InstrumentIndices.ToArray());
+    }
+
+    [Fact]
+    public void ScoreJsonWithoutPartViewsStillOpensAtTheCurrentFormatVersion()
+    {
+        using TempDirectory directory = new();
+        string path = Path.Combine(directory.Path, "older-score.tess");
+        Score score = CreateScore() with { Parts = [new ScorePartView("Piano", [0])] };
+        TessFile.Save(path, score, CreateStyle());
+
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            ZipArchiveEntry entry = archive.GetEntry("score.json")!;
+            JsonObject node;
+            using (Stream stream = entry.Open())
+            {
+                node = JsonNode.Parse(stream)!.AsObject();
+            }
+
+            node.Remove("Parts");
+            entry.Delete();
+            ZipArchiveEntry replacement = archive.CreateEntry("score.json", CompressionLevel.Optimal);
+            using Stream output = replacement.Open();
+            System.Text.Json.JsonSerializer.Serialize(output, node,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        TessDocument opened = TessFile.Open(path);
+
+        Assert.Empty(opened.Score.PartList);
+        Assert.Equal(TessMigrator.CurrentVersion, opened.Manifest.FormatVersion);
+    }
+
+    [Fact]
     public void SaveReplacesAnExistingFileAtomically()
     {
         using TempDirectory directory = new();

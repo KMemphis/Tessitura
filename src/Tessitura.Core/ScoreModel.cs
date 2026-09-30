@@ -16,6 +16,47 @@ public sealed record ScoreMetadata(string Title, string Composer);
 /// <param name="Staves">The instrument's staves.</param>
 public sealed record Instrument(string Name, ImmutableArray<Staff> Staves);
 
+/// <summary>Defines a linked part as an ordered view of one or more source-score instruments.</summary>
+/// <param name="Name">The displayed name of the part.</param>
+/// <param name="InstrumentIndices">The zero-based source instrument indices included in the part.</param>
+public sealed record ScorePartView(string Name, ImmutableArray<int> InstrumentIndices)
+{
+    /// <summary>Gets the displayed name of the part.</summary>
+    public string Name { get; init; } = ValidateName(Name);
+
+    /// <summary>Gets the source instrument indices in display order.</summary>
+    public ImmutableArray<int> InstrumentIndices { get; init; } = ValidateInstrumentIndices(InstrumentIndices);
+
+    private static string ValidateName(string name) => string.IsNullOrWhiteSpace(name)
+        ? throw new ArgumentException("A part needs a name.", nameof(name))
+        : name.Trim();
+
+    private static ImmutableArray<int> ValidateInstrumentIndices(ImmutableArray<int> instrumentIndices)
+    {
+        if (instrumentIndices.IsDefaultOrEmpty)
+        {
+            throw new ArgumentException("A part must include at least one instrument.", nameof(instrumentIndices));
+        }
+
+        HashSet<int> seen = [];
+        foreach (int instrumentIndex in instrumentIndices)
+        {
+            if (instrumentIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(instrumentIndices),
+                    "Instrument indices cannot be negative.");
+            }
+
+            if (!seen.Add(instrumentIndex))
+            {
+                throw new ArgumentException("Instrument indices in a part must be unique.", nameof(instrumentIndices));
+            }
+        }
+
+        return instrumentIndices;
+    }
+}
+
 /// <summary>Describes one staff.</summary>
 /// <param name="Name">The staff name.</param>
 /// <param name="InitialClef">The clef used when the staff is first drawn.</param>
@@ -344,19 +385,24 @@ public sealed record Note(Pitch Pitch, bool TiedToNext = false);
 /// <param name="Content">The content of each staff and measure.</param>
 /// <param name="Attachments">Dynamics, articulations and other marks anchored to events; default means none.</param>
 /// <param name="Spanners">Slurs and lines that run from one event to another; default means none.</param>
+/// <param name="Parts">Linked views that select instruments and have their own layout; default means none.</param>
 public sealed record Score(
     ScoreMetadata Metadata,
     ImmutableArray<Instrument> Instruments,
     ImmutableArray<Measure> Measures,
     ImmutableDictionary<StaffMeasureKey, StaffMeasure> Content,
     ImmutableArray<Attachment> Attachments = default,
-    ImmutableArray<Spanner> Spanners = default)
+    ImmutableArray<Spanner> Spanners = default,
+    ImmutableArray<ScorePartView> Parts = default)
 {
     /// <summary>Gets the spanners, empty when none were given.</summary>
     public ImmutableArray<Spanner> SpannerList => Spanners.IsDefault ? ImmutableArray<Spanner>.Empty : Spanners;
 
     /// <summary>Gets the attachments, empty when none were given.</summary>
     public ImmutableArray<Attachment> AttachmentList => Attachments.IsDefault ? ImmutableArray<Attachment>.Empty : Attachments;
+
+    /// <summary>Gets the linked part views, empty when none were given.</summary>
+    public ImmutableArray<ScorePartView> PartList => Parts.IsDefault ? ImmutableArray<ScorePartView>.Empty : Parts;
 }
 
 /// <summary>Names the kinds of line that run from one event to another.</summary>

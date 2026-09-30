@@ -21,6 +21,8 @@ internal sealed record StaffDto(string Name, int Clef);
 
 internal sealed record InstrumentDto(string Name, List<StaffDto> Staves);
 
+internal sealed record ScorePartDto(string Name, List<int> InstrumentIndices);
+
 internal sealed record MeasureDto(int Number, int Numerator, int Denominator, int Fifths,
     RepeatDto? Repeat = null);
 
@@ -34,7 +36,7 @@ internal sealed record AttachmentDto(string Kind, Guid Target, int Value, int Va
 internal sealed record ScoreDto(
     string Title, string Composer, List<InstrumentDto> Instruments,
     List<MeasureDto> Measures, List<StaffMeasureDto> Content, List<AttachmentDto>? Attachments = null,
-    List<SpannerDto>? Spanners = null);
+    List<SpannerDto>? Spanners = null, List<ScorePartDto>? Parts = null);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(TessManifest))]
