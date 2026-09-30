@@ -35,6 +35,7 @@ public static class Interpreter
         }
 
         List<PerformedNote> notes = [];
+        List<(int Staff, Fraction Start, Fraction End, int Shift)> octaves = OctaveSpans(score);
         int staffBase = 0;
         for (int instrument = 0; instrument < score.Instruments.Length; instrument++)
         {
@@ -45,7 +46,7 @@ public static class Interpreter
             {
                 for (int voiceNumber = 1; voiceNumber <= 4; voiceNumber++)
                 {
-                    CollectVoice(score, instrument, staff, voiceNumber, settings, levels, levelPositions, articulationsAt, notes);
+                    CollectVoice(score, instrument, staff, voiceNumber, settings, levels, levelPositions, articulationsAt, notes, octaves);
                 }
             }
 
@@ -64,6 +65,51 @@ public static class Interpreter
             return byInstrument != 0 ? byInstrument : a.Midi.CompareTo(b.Midi);
         });
         return new Interpretation([.. notes], new TempoMap(settings.DefaultTempo, hints.Tempos));
+    }
+
+    // An 8va line makes the notes from its first event through its last event sound an octave higher (8vb, lower).
+    private static List<(int Staff, Fraction Start, Fraction End, int Shift)> OctaveSpans(Score score)
+    {
+        List<(int, Fraction, Fraction, int)> spans = [];
+        if (!score.SpannerList.Any(s => s.Kind is SpannerKind.OctaveUp or SpannerKind.OctaveDown))
+        {
+            return spans;
+        }
+
+        Dictionary<EventId, (int Staff, Fraction Start, Fraction End)> where = [];
+        Fraction measureStart = Fraction.Zero;
+        for (int measure = 0; measure < score.Measures.Length; measure++)
+        {
+            foreach (KeyValuePair<StaffMeasureKey, StaffMeasure> entry in score.Content)
+            {
+                if (entry.Key.MeasureIndex != measure)
+                {
+                    continue;
+                }
+
+                foreach (Voice voice in entry.Value.Voices)
+                {
+                    foreach (MusicEvent musicEvent in voice.Events)
+                    {
+                        where.TryAdd(musicEvent.Id, (entry.Key.StaffIndex, measureStart + musicEvent.Onset, measureStart + musicEvent.Onset + musicEvent.Length));
+                    }
+                }
+            }
+
+            measureStart += score.Measures[measure].TimeSignature.Length;
+        }
+
+        foreach (Spanner spanner in score.SpannerList)
+        {
+            if (spanner.Kind is SpannerKind.OctaveUp or SpannerKind.OctaveDown &&
+                where.TryGetValue(spanner.Start, out (int Staff, Fraction Start, Fraction End) first) &&
+                where.TryGetValue(spanner.End, out (int Staff, Fraction Start, Fraction End) last) && first.Staff == last.Staff)
+            {
+                spans.Add((first.Staff, first.Start, last.End, spanner.Kind == SpannerKind.OctaveUp ? 12 : -12));
+            }
+        }
+
+        return spans;
     }
 
     private static Dictionary<Fraction, Dynamic> CollectDynamics(Score score, int staffBase, int staffCount,
@@ -105,7 +151,8 @@ public static class Interpreter
 
     private static void CollectVoice(Score score, int instrument, int staff, int voiceNumber,
         InterpretationSettings settings, Dictionary<Fraction, Dynamic> levels, List<Fraction> levelPositions,
-        Dictionary<EventId, List<Articulation>> articulationsAt, List<PerformedNote> notes)
+        Dictionary<EventId, List<Articulation>> articulationsAt, List<PerformedNote> notes,
+        List<(int Staff, Fraction Start, Fraction End, int Shift)> octaves)
     {
         // A note tied to the next is one sounding note; its articulation comes from the first event.
         Dictionary<int, int> open = [];
@@ -129,6 +176,14 @@ public static class Interpreter
                         foreach (Note written in chord.Notes)
                         {
                             int midi = written.Pitch.MidiNumber;
+                            foreach ((int octaveStaff, Fraction octaveStart, Fraction octaveEnd, int shift) in octaves)
+                            {
+                                if (octaveStaff == staff && start >= octaveStart && start < octaveEnd)
+                                {
+                                    midi += shift;
+                                }
+                            }
+
                             int index;
                             if (open.TryGetValue(midi, out int existing) &&
                                 pending[existing].Note.Start + pending[existing].Note.NotatedLength == start)

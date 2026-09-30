@@ -130,6 +130,35 @@ public sealed class AttachmentIoTests
         Assert.Throws<ArgumentException>(() => new AddSpannerCommand(new Spanner(notes[0].Id, notes[0].Id, SpannerKind.Slur)).Apply(score, context));
     }
 
+    [Fact]
+    public void HairpinsOctaveLinesAndPedalsSurviveTessAndMusicXml()
+    {
+        (Score score, Chord[] notes) = Create();
+        EditContext context = new(0, 0, 1);
+        Score lines = score;
+        SpannerKind[] kinds = [SpannerKind.Crescendo, SpannerKind.Diminuendo, SpannerKind.OctaveUp, SpannerKind.OctaveDown, SpannerKind.Pedal];
+        foreach (SpannerKind kind in kinds)
+        {
+            lines = new AddSpannerCommand(new Spanner(notes[0].Id, notes[1].Id, kind)).Apply(lines, context);
+        }
+
+        string path = Path.Combine(Path.GetTempPath(), $"tessitura-lines-{Guid.NewGuid():N}.tess");
+        try
+        {
+            TessFile.Save(path, lines, new Tessitura.Engraving.Style { StaffLineThickness = 0.1 });
+            Assert.Equal(lines.SpannerList.AsEnumerable(), TessFile.Open(path).Score.SpannerList.AsEnumerable());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        System.Xml.Linq.XDocument document = MusicXmlExporter.ToDocument(lines);
+        Assert.Empty(MusicXmlSchema.Validate(document));
+        Score again = MusicXmlImporter.Import(document).Score;
+        Assert.Equal(kinds.Order(), again.SpannerList.Select(s => s.Kind).Order());
+    }
+
     private static (Score, Chord[]) Create()
     {
         Chord[] notes = [.. Enumerable.Range(0, 2).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 4), new Duration(NoteValue.Quarter, 0),

@@ -153,6 +153,16 @@ public sealed class ScoreInputController
             (ArticulationKind.Trill, "trino", "Alt+R"), (ArticulationKind.Mordent, "mordente", "Alt+Shift+M"),
             (ArticulationKind.Turn, "grupeto", "Alt+G"),
         ];
+        foreach ((SpannerKind kind, string name, string shortcut) in new (SpannerKind, string, string)[]
+        {
+            (SpannerKind.Crescendo, "crescendo", "Alt+Shift+C"), (SpannerKind.Diminuendo, "diminuendo", "Alt+Shift+D"),
+            (SpannerKind.OctaveUp, "8va", "Alt+Shift+O"), (SpannerKind.OctaveDown, "8vb", "Alt+Shift+B"), (SpannerKind.Pedal, "pedal", "Alt+Shift+P"),
+        })
+        {
+            actions.Add(new ActionDefinition($"spanner.{kind.ToString().ToLowerInvariant()}", $"Añadir {name} sobre la selección", shortcut,
+                () => SpanSelection(kind)));
+        }
+
         actions.Add(new ActionDefinition("spanner.slur", "Ligadura de expresión sobre la selección", "S", () => SlurSelection()));
         foreach ((ArticulationKind kind, string name, string shortcut) in marks)
         {
@@ -507,7 +517,12 @@ public sealed class ScoreInputController
 
     /// <summary>Slurs from the first to the last selected event of the same staff.</summary>
     /// <returns>Whether at least two events of one staff were selected.</returns>
-    public bool SlurSelection()
+    public bool SlurSelection() => SpanSelection(SpannerKind.Slur);
+
+    /// <summary>Adds a spanner of a kind from the first to the last selected event of the same staff.</summary>
+    /// <param name="kind">The kind of line.</param>
+    /// <returns>Whether at least two events of one staff were selected.</returns>
+    public bool SpanSelection(SpannerKind kind)
     {
         List<EventLocation> locations = [];
         foreach (SelectionItem item in CurrentSelection.Items)
@@ -532,7 +547,7 @@ public sealed class ScoreInputController
             return false;
         }
 
-        Apply(new AddSpannerCommand(new Spanner(first.Event.Id, last.Event.Id, SpannerKind.Slur)), first.Context, CurrentSelection);
+        Apply(new AddSpannerCommand(new Spanner(first.Event.Id, last.Event.Id, kind)), first.Context, CurrentSelection);
         NotifyStateChanged();
         return true;
     }

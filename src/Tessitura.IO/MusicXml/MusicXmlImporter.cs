@@ -83,7 +83,8 @@ public static class MusicXmlImporter
     private sealed record RawNote(
         int Measure, int Staff, string Voice, Fraction Onset, Fraction Duration, Duration? Notated,
         bool IsRest, bool IsChordMember, Pitch? Pitch, bool TieStart,
-        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null, ImmutableArray<Attachment> Extra = default, ImmutableArray<(int Number, bool Start)> Slurs = default);
+        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null, ImmutableArray<Attachment> Extra = default, ImmutableArray<(int Number, bool Start)> Slurs = default,
+        ImmutableArray<(SpannerKind Kind, string Type, int Number)> Lines = default);
 
     private sealed class Importer
     {
@@ -91,6 +92,8 @@ public static class MusicXmlImporter
         private readonly HashSet<string> _seenOnce = [];
         private readonly List<Attachment> _attachments = [];
         private readonly List<Spanner> _spanners = [];
+        private readonly List<(SpannerKind Kind, string Type, int Number)> _pendingLines = [];
+        private readonly Dictionary<(string Part, SpannerKind Kind, int Number), EventId> _openLines = [];
         private readonly Dictionary<(string Part, int Number), EventId> _openSlurs = [];
         private DynamicLevel? _pendingDynamic;
         private readonly List<Attachment> _pendingAttachments = [];
@@ -293,6 +296,33 @@ public static class MusicXmlImporter
                     }
                 }
 
+                if (!note.Lines.IsDefaultOrEmpty)
+                {
+                    foreach ((SpannerKind kind, string type, int number) in note.Lines)
+                    {
+                        if (type == "start")
+                        {
+                            _openLines[(part.Id, kind, number)] = eventId;
+                        }
+                        else
+                        {
+                            // A stop names no kind for wedges and octave shifts: match the open line with that number.
+                            foreach (SpannerKind candidate in Family(kind))
+                            {
+                                if (_openLines.Remove((part.Id, candidate, number), out EventId startId))
+                                {
+                                    if (startId != eventId)
+                                    {
+                                        _spanners.Add(new Spanner(startId, eventId, candidate));
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (!note.Marks.IsDefaultOrEmpty)
                 {
                     foreach (ArticulationKind kind in note.Marks)
@@ -386,6 +416,7 @@ public static class MusicXmlImporter
                 string where = $"{id}, measure {measureIndex + 1}";
                 _pendingDynamic = null;
                 _pendingAttachments.Clear();
+                _pendingLines.Clear();
                 foreach (XElement element in measure.Elements())
                 {
                     switch (element.Name.LocalName)
@@ -413,6 +444,21 @@ public static class MusicXmlImporter
                         case "direction":
                             foreach (XElement directionType in element.Elements("direction-type"))
                             {
+                                if (directionType.Element("wedge") is { } wedge && wedge.Attribute("type")?.Value is { } wedgeType)
+                                {
+                                    _pendingLines.Add((wedgeType == "diminuendo" ? SpannerKind.Diminuendo : SpannerKind.Crescendo, wedgeType == "stop" ? "stop" : "start", LineNumber(wedge)));
+                                }
+
+                                if (directionType.Element("octave-shift") is { } shift && shift.Attribute("type")?.Value is { } shiftType)
+                                {
+                                    _pendingLines.Add((shiftType == "up" ? SpannerKind.OctaveDown : SpannerKind.OctaveUp, shiftType == "stop" ? "stop" : "start", LineNumber(shift)));
+                                }
+
+                                if (directionType.Element("pedal") is { } pedal && pedal.Attribute("type")?.Value is "start" or "stop")
+                                {
+                                    _pendingLines.Add((SpannerKind.Pedal, pedal.Attribute("type")!.Value, LineNumber(pedal)));
+                                }
+
                                 if (directionType.Element("words")?.Value is { Length: > 0 } words)
                                 {
                                     _pendingAttachments.Add(new TextAttachment(default, words));
@@ -642,7 +688,7 @@ public static class MusicXmlImporter
 
             data.Notes.Add(new RawNote(measureIndex, staff, voice, onset,
                 duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic, extra,
-                isChord ? default : ReadSlurs(note)));
+                isChord ? default : ReadSlurs(note), isChord ? default : TakeLines()));
         }
 
         private Pitch? ReadPitch(XElement note, string where)
@@ -676,6 +722,23 @@ public static class MusicXmlImporter
             }
 
             return new Pitch(step, alter, octave);
+        }
+
+        private static SpannerKind[] Family(SpannerKind kind) => kind switch
+        {
+            SpannerKind.Crescendo or SpannerKind.Diminuendo => [SpannerKind.Crescendo, SpannerKind.Diminuendo],
+            SpannerKind.OctaveUp or SpannerKind.OctaveDown => [SpannerKind.OctaveUp, SpannerKind.OctaveDown],
+            _ => [kind],
+        };
+
+        private static int LineNumber(XElement element) =>
+            int.TryParse(element.Attribute("number")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 1;
+
+        private ImmutableArray<(SpannerKind Kind, string Type, int Number)> TakeLines()
+        {
+            ImmutableArray<(SpannerKind, string, int)> lines = [.. _pendingLines];
+            _pendingLines.Clear();
+            return lines;
         }
 
         private static ImmutableArray<(int Number, bool Start)> ReadSlurs(XElement note)

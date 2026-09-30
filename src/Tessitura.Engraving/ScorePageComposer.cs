@@ -191,6 +191,7 @@ public sealed class ScorePageComposer
             }
 
             AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
+            AddLines(primitives, score, state, musicStartX, musicEndX);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -488,6 +489,109 @@ public sealed class ScorePageComposer
             primitives.Add(BuildSlur(new ElementId(spanner.Start.Value), x0, y0, x3, y3, height * sign));
         }
     }
+
+    // Hairpins and pedal lines sit below the staff, octave lines above it; each is drawn open at a system edge when it
+    // continues into another system. Behind Bars, Dynamics > Hairpins; Octave lines; Pedal marks.
+    private void AddLines(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, SystemState state,
+        double musicStartX, double musicEndX)
+    {
+        foreach (Spanner spanner in score.SpannerList)
+        {
+            if (spanner.Kind == SpannerKind.Slur)
+            {
+                continue;
+            }
+
+            bool hasStart = state.Geometry.TryGetValue(spanner.Start, out EventGeometry start);
+            bool hasEnd = state.Geometry.TryGetValue(spanner.End, out EventGeometry end);
+            if (!hasStart && !hasEnd)
+            {
+                continue;
+            }
+
+            if (!hasStart)
+            {
+                start = end with { CenterX = musicStartX };
+            }
+
+            if (!hasEnd)
+            {
+                end = start with { CenterX = musicEndX - 0.5 };
+            }
+
+            double x0 = start.CenterX - (hasStart ? 0.6 : 0);
+            double x1 = end.CenterX + (hasEnd ? 0.6 : 0);
+            if (x1 - x0 < 1.0)
+            {
+                continue;
+            }
+
+            ElementId id = new(spanner.Start.Value);
+            double thickness = _style.StaffLineThickness * 1.2;
+            switch (spanner.Kind)
+            {
+                case SpannerKind.Crescendo:
+                case SpannerKind.Diminuendo:
+                {
+                    double y = start.StaffTop + 7.5;
+                    double open = 0.6;
+                    bool crescendo = spanner.Kind == SpannerKind.Crescendo;
+                    double left = crescendo ? 0 : open;
+                    double right = crescendo ? open : 0;
+                    primitives.Add(HairpinLine(id, x0, y - left, x1, y - right, thickness));
+                    primitives.Add(HairpinLine(id, x0, y + left, x1, y + right, thickness));
+                    break;
+                }
+
+                case SpannerKind.OctaveUp:
+                case SpannerKind.OctaveDown:
+                {
+                    bool up = spanner.Kind == SpannerKind.OctaveUp;
+                    double y = up ? start.StaffTop - 3.0 : start.StaffTop + 8.5;
+                    string label = up ? "ottavaAlta" : "ottavaBassa";
+                    if (hasStart)
+                    {
+                        AddGlyph(primitives, id, label, x0, y);
+                    }
+
+                    double dashStart = x0 + (hasStart ? _metadata.GetBoundingBox(label).NorthEast.X + 0.4 : 0);
+                    for (double x = dashStart; x < x1 - 0.2; x += 1.6)
+                    {
+                        double dashEnd = Math.Min(x + 1.0, x1);
+                        primitives.Add(HairpinLine(id, x, y - (up ? 0.5 : 0), dashEnd, y - (up ? 0.5 : 0), thickness));
+                    }
+
+                    if (hasEnd)
+                    {
+                        // The hook points toward the staff.
+                        primitives.Add(HairpinLine(id, x1, y - (up ? 0.5 : 0), x1, y - (up ? 0.5 : 0) + (up ? 0.9 : -0.9), thickness));
+                    }
+
+                    break;
+                }
+
+                case SpannerKind.Pedal:
+                {
+                    double y = start.StaffTop + 8.5;
+                    if (hasStart)
+                    {
+                        AddGlyph(primitives, id, "keyboardPedalPed", x0, y);
+                    }
+
+                    if (hasEnd)
+                    {
+                        AddGlyph(primitives, id, "keyboardPedalUp", x1 - 0.5, y);
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    private static DisplayLine HairpinLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>
+        new(id, new DisplayBox(Math.Min(x1, x2), Math.Min(y1, y2) - thickness / 2, Math.Abs(x2 - x1), Math.Abs(y2 - y1) + thickness),
+            new DisplayPoint(x1, y1), new DisplayPoint(x2, y2), thickness);
 
     private static double CurveY(double x0, double y0, double x3, double y3, double height, double sign, double t, out double x)
     {

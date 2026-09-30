@@ -259,3 +259,23 @@ public sealed class TempoAttachmentTests
         Assert.Equal(2.0 + 4.0, result.Tempo.SecondsAt(new Fraction(2, 1)), precision: 9);
     }
 }
+
+public sealed class OctaveLineInterpretationTests
+{
+    [Fact]
+    public void AnOctaveLineShiftsTheNotesItCoversAndOnlyThose()
+    {
+        Chord[] notes = [.. Enumerable.Range(0, 4).Select(i => new Chord(new EventId(Guid.NewGuid()), new Fraction(i, 4), new Duration(NoteValue.Quarter, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto))];
+        Score score = new(new ScoreMetadata("T", ""), [new Instrument("I", [new Staff("S")])], [new Measure(1, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1, [.. notes])])),
+            default, [new Spanner(notes[1].Id, notes[2].Id, SpannerKind.OctaveUp), new Spanner(notes[3].Id, notes[3].Id, SpannerKind.OctaveDown)]);
+
+        Interpretation up = Interpreter.Interpret(score with { Spanners = [new Spanner(notes[1].Id, notes[2].Id, SpannerKind.OctaveUp)] });
+        Interpretation down = Interpreter.Interpret(score with { Spanners = [new Spanner(notes[0].Id, notes[1].Id, SpannerKind.OctaveDown)] });
+
+        Assert.Equal([60, 72, 72, 60], up.Notes.Select(n => n.Midi));
+        Assert.Equal([48, 48, 60, 60], down.Notes.Select(n => n.Midi));
+    }
+}

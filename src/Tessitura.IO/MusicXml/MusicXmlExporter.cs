@@ -272,6 +272,7 @@ public static class MusicXmlExporter
             return;
         }
 
+        AddLineDirections(measure, musicEvent.Id, spanners, staff, staffCount);
         List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale, attachments);
         AddSlurMarks(written, musicEvent.Id, spanners);
         if (actual == normal)
@@ -283,6 +284,32 @@ public static class MusicXmlExporter
         for (int index = 0; index < written.Count; index++)
         {
             InsertTimeModification(written[index], actual, normal, index == 0 ? bracket : null);
+        }
+    }
+
+    // Hairpins, octave lines and pedals are directions placed before the note where they start or stop.
+    private static void AddLineDirections(XElement measure, EventId id, Score score, int staff, int staffCount)
+    {
+        for (int index = 0; index < score.SpannerList.Length; index++)
+        {
+            Spanner spanner = score.SpannerList[index];
+            if (spanner.Kind == SpannerKind.Slur || (spanner.Start != id && spanner.End != id))
+            {
+                continue;
+            }
+
+            string type = spanner.Start == id ? "start" : "stop";
+            int number = (index % 6) + 1;
+            XElement content = spanner.Kind switch
+            {
+                SpannerKind.Crescendo => new XElement("wedge", new XAttribute("type", type == "start" ? "crescendo" : "stop"), new XAttribute("number", number)),
+                SpannerKind.Diminuendo => new XElement("wedge", new XAttribute("type", type == "start" ? "diminuendo" : "stop"), new XAttribute("number", number)),
+                SpannerKind.OctaveUp => new XElement("octave-shift", new XAttribute("type", type == "start" ? "down" : "stop"), new XAttribute("size", 8), new XAttribute("number", number)),
+                SpannerKind.OctaveDown => new XElement("octave-shift", new XAttribute("type", type == "start" ? "up" : "stop"), new XAttribute("size", 8), new XAttribute("number", number)),
+                _ => new XElement("pedal", new XAttribute("type", type == "start" ? "start" : "stop"), new XAttribute("number", number)),
+            };
+            measure.Add(new XElement("direction", new XElement("direction-type", content),
+                staffCount > 1 ? new XElement("staff", staff + 1) : null));
         }
     }
 
