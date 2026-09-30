@@ -16,10 +16,15 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "midi-probe")
+        {
+            return MidiProbe.Run(args[1]);
+        }
+
         if (args.Length != 2 || args[0] != "audio-probe" ||
             (args[1] != "openal" && args[1] != "miniaudio"))
         {
-            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio OR midi-probe list|loopback");
             return 2;
         }
 

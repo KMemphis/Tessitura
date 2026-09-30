@@ -8,6 +8,7 @@
     <PackageVersion Include="SkiaSharp" Version="3.119.4" />
     <PackageVersion Include="FsCheck.Xunit" Version="3.4.0" />
     <PackageVersion Include="MeltySynth" Version="2.4.1" />
+    <PackageVersion Include="Melanchall.DryWetMidi" Version="8.0.3" />
     <PackageVersion Include="Silk.NET.OpenAL" Version="2.23.0" />
     <PackageVersion Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1" />
     <PackageVersion Include="JAJ.Packages.MiniAudioEx" Version="3.3.7" />

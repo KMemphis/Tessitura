@@ -26,6 +26,11 @@ jobs:
         run: dotnet test Tessitura.sln --configuration Release --no-build --nologo
         env:
           TESSITURA_CAPTURE_DIR: ${{ github.workspace }}/captures
+      - name: Enumerate MIDI devices
+        run: dotnet run --project tests/Tessitura.Benchmarks --configuration Release --no-build -- midi-probe list
+      - name: Receive MIDI note on macOS virtual port
+        if: matrix.os == 'macos-latest'
+        run: dotnet run --project tests/Tessitura.Benchmarks --configuration Release --no-build -- midi-probe loopback
       - name: Upload music preview
         uses: actions/upload-artifact@v6
         with:
