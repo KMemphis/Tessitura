@@ -129,6 +129,186 @@ public sealed class StaffElementPlacer
         return result.ToImmutable();
     }
 
+    /// <summary>Places a chord of several notes: heads with seconds displaced to opposite sides of one stem,
+    /// stacked accidental columns, one column of dots and shared ledger lines.</summary>
+    /// <param name="id">The originating score event.</param>
+    /// <param name="notes">The written pitches with their visible accidentals.</param>
+    /// <param name="duration">The notated duration.</param>
+    /// <param name="x">The origin of the undisplaced noteheads.</param>
+    /// <param name="staffTop">The top staff-line position.</param>
+    /// <param name="clef">The staff clef.</param>
+    /// <param name="forcedStem">The stem direction imposed by the voice, or null to choose it.</param>
+    /// <returns>The chord's primitives.</returns>
+    public ImmutableArray<DrawingPrimitive> PlaceChord(EventId id,
+        IReadOnlyList<(Pitch Pitch, AccidentalMark Accidental)> notes, Duration duration, double x, double staffTop,
+        Clef clef = Clef.Treble, StemDirection? forcedStem = null)
+    {
+        ArgumentNullException.ThrowIfNull(notes);
+        if (notes.Count == 0)
+        {
+            throw new ArgumentException("A chord needs at least one note.", nameof(notes));
+        }
+
+        ElementId elementId = new(id.Value);
+        string headName = duration.Value switch
+        {
+            NoteValue.Whole => "noteheadWhole",
+            NoteValue.Half => "noteheadHalf",
+            _ => "noteheadBlack",
+        };
+        // Ascending by staff position; equal positions keep their order.
+        int[] order = [.. Enumerable.Range(0, notes.Count).OrderBy(i => StaffPitchPosition.Get(notes[i].Pitch, clef))];
+        int[] positions = [.. order.Select(i => StaffPitchPosition.Get(notes[i].Pitch, clef))];
+        int lowest = positions[0];
+        int highest = positions[^1];
+        // Behind Bars, Chords > Stem direction: follow the note farthest from the middle line.
+        StemDirection direction = forcedStem is StemDirection.Up or StemDirection.Down
+            ? forcedStem.Value
+            : BeamGrouper.ChooseStemDirection(highest - 4 >= 4 - lowest ? Math.Max(0, highest - 4) : lowest - 4);
+        Smufl.SmuflBoundingBox headBox = _metadata.GetBoundingBox(headName);
+        double headWidth = headBox.NorthEast.X - headBox.SouthWest.X;
+        bool hasStem = duration.Value != NoteValue.Whole;
+
+        // Behind Bars, Chords > Seconds: with the stem up the upper head of a second goes right of the stem, with the
+        // stem down the lower head goes left; three stacked notes alternate.
+        double[] shift = new double[positions.Length];
+        if (direction == StemDirection.Up)
+        {
+            for (int i = 1; i < positions.Length; i++)
+            {
+                if (positions[i] - positions[i - 1] == 1 && shift[i - 1] == 0)
+                {
+                    shift[i] = headWidth;
+                }
+            }
+        }
+        else
+        {
+            for (int i = positions.Length - 2; i >= 0; i--)
+            {
+                if (positions[i + 1] - positions[i] == 1 && shift[i + 1] == 0)
+                {
+                    shift[i] = -headWidth;
+                }
+            }
+        }
+
+        double leftMostHead = x + Math.Min(0, shift.Min());
+        double rightMostHead = x + headWidth + Math.Max(0, shift.Max());
+        ImmutableArray<DrawingPrimitive>.Builder result = ImmutableArray.CreateBuilder<DrawingPrimitive>();
+
+        // Ledger lines span every head that needs them, displaced ones included.
+        double ledgerLeft = leftMostHead - _style.LedgerLineExtension;
+        double ledgerRight = rightMostHead + _style.LedgerLineExtension;
+        for (int position = -2; position >= lowest; position -= 2)
+        {
+            result.Add(HorizontalLine(elementId, ledgerLeft, ledgerRight, staffTop + 4 - position * 0.5, _style.LedgerLineThickness));
+        }
+
+        for (int position = 10; position <= highest; position += 2)
+        {
+            result.Add(HorizontalLine(elementId, ledgerLeft, ledgerRight, staffTop + 4 - position * 0.5, _style.LedgerLineThickness));
+        }
+
+        Glyph[] heads = new Glyph[positions.Length];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            double y = staffTop + 4 - positions[i] * 0.5;
+            heads[i] = MakeGlyph(elementId, headName, x + shift[i], y);
+            result.Add(heads[i]);
+        }
+
+        // Behind Bars, Accidentals > Chords: stack from the top down in columns to the left, reusing a column when
+        // the vertical distance to its last accidental is at least a seventh (six staff steps).
+        List<List<(double Top, double Bottom)>> columns = [];
+        double accidentalGap = _style.MinimumAccidentalGap;
+        // Columns are as wide as the widest accidental so that mixed sharps and flats never touch.
+        double columnWidth = 0;
+        foreach ((Pitch _, AccidentalMark mark) in notes)
+        {
+            if (mark != AccidentalMark.None)
+            {
+                Smufl.SmuflBoundingBox widest = _metadata.GetBoundingBox(AccidentalGlyphName(mark));
+                columnWidth = Math.Max(columnWidth, widest.NorthEast.X - widest.SouthWest.X);
+            }
+        }
+
+        for (int i = positions.Length - 1; i >= 0; i--)
+        {
+            AccidentalMark mark = notes[order[i]].Accidental;
+            if (mark == AccidentalMark.None)
+            {
+                continue;
+            }
+
+            string name = AccidentalGlyphName(mark);
+            Smufl.SmuflBoundingBox box = _metadata.GetBoundingBox(name);
+            double y = staffTop + 4 - positions[i] * 0.5;
+            (double top, double bottom) = (y - box.NorthEast.Y - 0.1, y - box.SouthWest.Y + 0.1);
+            int column = 0;
+            while (column < columns.Count && columns[column].Exists(o => top < o.Bottom && o.Top < bottom))
+            {
+                column++;
+            }
+
+            if (column == columns.Count)
+            {
+                columns.Add([]);
+            }
+
+            columns[column].Add((top, bottom));
+            double accidentalX = leftMostHead - accidentalGap - box.NorthEast.X - column * (columnWidth + accidentalGap);
+            result.Add(MakeGlyph(elementId, name, accidentalX, y));
+        }
+
+        if (hasStem)
+        {
+            string anchorName = direction == StemDirection.Up ? "stemUpSE" : "stemDownNW";
+            Smufl.SmuflPoint anchor = _metadata.GetAnchor(headName, anchorName);
+            // The stem sits on the undisplaced column: right edge for up stems, left edge for down stems.
+            double stemX = x + anchor.X;
+            double startY = direction == StemDirection.Up
+                ? staffTop + 4 - lowest * 0.5 - anchor.Y
+                : staffTop + 4 - highest * 0.5 - anchor.Y;
+            double endY = direction == StemDirection.Up
+                ? staffTop + 4 - highest * 0.5 - _style.StemLength
+                : staffTop + 4 - lowest * 0.5 + _style.StemLength;
+            // Behind Bars, Ground Rules > Stems: reach the middle line when the far note lies beyond it.
+            if (direction == StemDirection.Up && endY > staffTop + 2)
+            {
+                endY = staffTop + 2;
+            }
+            else if (direction == StemDirection.Down && endY < staffTop + 2)
+            {
+                endY = staffTop + 2;
+            }
+
+            result.Add(new Line(elementId,
+                new DisplayBox(stemX - _style.StemThickness / 2, Math.Min(startY, endY), _style.StemThickness, Math.Abs(endY - startY)),
+                new DisplayPoint(stemX, startY), new DisplayPoint(stemX, endY), _style.StemThickness));
+        }
+
+        // Behind Bars, Dots > Chords: one column right of the widest head; a dot on a line moves to the space above,
+        // and two dots that would share a space are separated by moving the lower one down.
+        if (duration.Dots > 0)
+        {
+            double lastDotY = double.NaN;
+            for (int i = positions.Length - 1; i >= 0; i--)
+            {
+                double y = staffTop + 4 - positions[i] * 0.5 - (positions[i] % 2 == 0 ? 0.5 : 0);
+                if (!double.IsNaN(lastDotY) && Math.Abs(y - lastDotY) < 0.5)
+                {
+                    y = lastDotY + 1;
+                }
+
+                lastDotY = y;
+                AddDots(result, elementId, rightMostHead, y, duration.Dots);
+            }
+        }
+
+        return result.ToImmutable();
+    }
+
     /// <summary>Places one rest glyph and its optional augmentation dots.</summary>
     /// <param name="id">The originating score event.</param>
     /// <param name="duration">The notated rest duration.</param>

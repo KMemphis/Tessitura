@@ -317,6 +317,29 @@ public sealed class ScorePageComposer
         }
 
         Chord chord = (Chord)leaf;
+        if (chord.Notes.Length > 1)
+        {
+            (Pitch Pitch, AccidentalMark Accidental)[] notes = new (Pitch, AccidentalMark)[chord.Notes.Length];
+            for (int noteIndex = 0; noteIndex < notes.Length; noteIndex++)
+            {
+                AccidentalMark accidental = AccidentalMark.None;
+                for (int i = 0; i < order.Length; i++)
+                {
+                    if (order[i].Voice == voice.Number && order[i].Event == chord.Id && order[i].Note == noteIndex)
+                    {
+                        accidental = marks[i];
+                        break;
+                    }
+                }
+
+                notes[noteIndex] = (chord.Notes[noteIndex].Pitch, accidental);
+            }
+
+            double shift = manyVoices && CollidesWithLowerVoice(staffMeasure, voice, chord, chord.Notes[0], clef) ? headWidth : 0;
+            primitives.AddRange(placer.PlaceChord(chord.Id, notes, chord.Duration, x + shift, staffTop, clef, voiceStem));
+            return;
+        }
+
         for (int noteIndex = 0; noteIndex < chord.Notes.Length; noteIndex++)
         {
             Note note = chord.Notes[noteIndex];
