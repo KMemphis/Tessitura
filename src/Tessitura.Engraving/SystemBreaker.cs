@@ -44,10 +44,12 @@ public sealed class SystemBreaker
     /// <summary>Finds a minimum-badness set of system breaks and assigns measure widths.</summary>
     /// <param name="measures">Measures in score order with minimum, ideal, and elastic widths.</param>
     /// <param name="availableWidth">The system width after margins, in staff spaces.</param>
+    /// <param name="cancellationToken">Cancels the layout before the result is returned.</param>
     /// <returns>The ordered systems. The last system remains ragged.</returns>
     public ImmutableArray<SystemLine> Layout(ReadOnlySpan<SystemBreakMeasure> measures,
-        double availableWidth)
+        double availableWidth, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!double.IsFinite(availableWidth) || availableWidth <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(availableWidth));
@@ -64,6 +66,7 @@ public sealed class SystemBreaker
         double[] shrinkPrefix = new double[measures.Length + 1];
         for (int index = 0; index < measures.Length; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             SystemBreakMeasure measure = measures[index];
             if (!double.IsFinite(measure.MinimumWidth) || measure.MinimumWidth <= 0 ||
                 !double.IsFinite(measure.IdealWidth) || measure.IdealWidth < measure.MinimumWidth ||
@@ -88,6 +91,7 @@ public sealed class SystemBreaker
 
         for (int start = count - 1; start >= 0; start--)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             for (int end = start + 1; end <= count; end++)
             {
                 bool isLast = end == count;
@@ -135,6 +139,7 @@ public sealed class SystemBreaker
         int lineStart = 0;
         while (lineStart < count)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int lineEnd = nextBreak[lineStart];
             bool isLast = lineEnd == count;
             double idealWidth = idealPrefix[lineEnd] - idealPrefix[lineStart];

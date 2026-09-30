@@ -4,6 +4,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="MeltySynth" />
     <PackageReference Include="Melanchall.DryWetMidi" />
     <PackageReference Include="Silk.NET.OpenAL" />

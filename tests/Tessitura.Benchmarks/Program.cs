@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using BenchmarkDotNet.Running;
 using MeltySynth;
 using MiniAudioEx.Core.StandardAPI;
 using MiniAudioEx.Native;
@@ -16,6 +17,12 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "layout-benchmark")
+        {
+            BenchmarkSwitcher.FromAssembly(typeof(LayoutBenchmarks).Assembly).Run(args[1..]);
+            return 0;
+        }
+
         if (args.Length == 2 && args[0] == "midi-probe")
         {
             return MidiProbe.Run(args[1]);
@@ -24,7 +31,7 @@ internal static class Program
         if (args.Length != 2 || args[0] != "audio-probe" ||
             (args[1] != "openal" && args[1] != "miniaudio"))
         {
-            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio OR midi-probe list|loopback");
+            Console.Error.WriteLine("Usage: dotnet run --project tests/Tessitura.Benchmarks -- audio-probe openal|miniaudio OR midi-probe list|loopback OR layout-benchmark [BenchmarkDotNet options]");
             return 2;
         }
 
