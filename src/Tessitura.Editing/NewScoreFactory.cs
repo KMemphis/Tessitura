@@ -39,6 +39,12 @@ public sealed record NewScoreOptions(
 /// <summary>Builds an empty score, filled with rests, from wizard options.</summary>
 public static class NewScoreFactory
 {
+    /// <summary>Creates the rests that cover one whole measure, split at the beats.</summary>
+    /// <param name="timeSignature">The measure's meter.</param>
+    /// <returns>The rests, starting at onset zero.</returns>
+    public static ImmutableArray<MusicEvent> CreateMeasureRests(TimeSignature timeSignature) =>
+        RhythmicScoreNormalizer.CreateFullMeasureRests(timeSignature);
+
     /// <summary>Creates the score for the options.</summary>
     /// <param name="options">The wizard choices.</param>
     /// <returns>A valid score whose every staff measure is covered by rests.</returns>

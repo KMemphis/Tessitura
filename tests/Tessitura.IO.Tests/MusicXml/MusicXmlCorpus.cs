@@ -37,6 +37,7 @@ public static class MusicXmlCorpus
     {
         ["01d"] = "microtonos", ["01f"] = "microtonos", ["01g"] = "alteraciones de flecha", ["01h"] = "microtonos",
         ["02c"] = "silencios de varios compases", ["02d"] = "silencios de varios compases",
+        ["03a"] = "notas más largas que una redonda", ["11d"] = "notas más largas que una redonda",
         ["03e-Rhythm-No"] = "sin divisions", ["11b"] = "sin compás", ["11f"] = "símbolos de compás", ["11h"] = "sin medida",
         ["11i"] = "compás alternativo", ["13c"] = "armadura no tradicional", ["13d"] = "microtonos",
         ["13e-KeySignatures-Mid"] = "cambio de armadura a mitad de compás", ["21g"] = "trémolos",

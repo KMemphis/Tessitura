@@ -82,8 +82,8 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
             int measureIndex = 0;
             foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
             {
-                long cursor = 0;
-                long lastOnset = 0;
+                Fraction cursor = Fraction.Zero;
+                Fraction lastOnset = Fraction.Zero;
                 foreach (XElement element in measure.Elements())
                 {
                     switch (element.Name.LocalName)
@@ -96,10 +96,10 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
 
                             break;
                         case "backup":
-                            cursor -= ReadDuration(element);
+                            cursor -= new Fraction(ReadDuration(element), Math.Max(1, divisions) * 4L);
                             break;
                         case "forward":
-                            cursor += ReadDuration(element);
+                            cursor += new Fraction(ReadDuration(element), Math.Max(1, divisions) * 4L);
                             break;
                         case "note":
                             if (divisions == 0)
@@ -164,16 +164,16 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
         long.Parse(element.Elements().First(e => e.Name.LocalName == "duration").Value.Trim(),
             CultureInfo.InvariantCulture);
 
-    private static void ReadNote(XElement note, int part, int measure, int divisions, ref long cursor,
-        ref long lastOnset, List<MusicXmlEvent> events, List<string> notes)
+    private static void ReadNote(XElement note, int part, int measure, int divisions, ref Fraction cursor,
+        ref Fraction lastOnset, List<MusicXmlEvent> events, List<string> notes)
     {
         bool isChord = note.Elements().Any(e => e.Name.LocalName == "chord");
         bool isGrace = note.Elements().Any(e => e.Name.LocalName == "grace");
-        long onset = isChord ? lastOnset : cursor;
-        long duration = 0;
+        Fraction onset = isChord ? lastOnset : cursor;
+        Fraction duration = Fraction.Zero;
         if (!isGrace && note.Elements().FirstOrDefault(e => e.Name.LocalName == "duration") is { } durationElement)
         {
-            duration = long.Parse(durationElement.Value.Trim(), CultureInfo.InvariantCulture);
+            duration = new Fraction(long.Parse(durationElement.Value.Trim(), CultureInfo.InvariantCulture), divisions * 4L);
         }
 
         string kind = isGrace ? "grace" : "note";
@@ -194,8 +194,10 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
             pitchText = $"{step}{(alter == "0" ? "" : $"[{alter}]")}{octave}";
         }
 
-        bool tieStart = note.Elements().Any(e => e.Name.LocalName == "tie" && e.Attribute("type")?.Value == "start");
-        bool tieStop = note.Elements().Any(e => e.Name.LocalName == "tie" && e.Attribute("type")?.Value == "stop");
+        IEnumerable<XElement> ties = note.Elements().Where(e => e.Name.LocalName == "tie")
+            .Concat(note.Elements().Where(e => e.Name.LocalName == "notations").Elements().Where(e => e.Name.LocalName == "tied"));
+        bool tieStart = ties.Any(e => e.Attribute("type")?.Value == "start");
+        bool tieStop = ties.Any(e => e.Attribute("type")?.Value == "stop");
         string tie = tieStart && tieStop ? "both" : tieStart ? "start" : tieStop ? "stop" : "";
         int staff = int.Parse(note.Elements().FirstOrDefault(e => e.Name.LocalName == "staff")?.Value.Trim() ?? "1",
             CultureInfo.InvariantCulture);
@@ -206,7 +208,7 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
         }
 
         events.Add(new MusicXmlEvent(part, measure, staff, voice,
-            new Fraction(onset, divisions * 4L), new Fraction(duration, divisions * 4L), kind, pitchText, tie));
+            onset, duration, kind, pitchText, tie));
         if (!isChord && !isGrace)
         {
             lastOnset = onset;

@@ -67,6 +67,23 @@ public sealed record ChangeTimeSignatureCommand(TimeSignature TimeSignature) : I
     }
 }
 
+/// <summary>
+/// Rewrites one voice on the global timeline: gaps become rests, notes that cross a barline are split
+/// with ties, and the score grows when the voice runs past its end. The context selects staff and voice.
+/// </summary>
+public sealed record NormalizeVoiceCommand : IScoreCommand
+{
+    /// <inheritdoc />
+    public string Description => "Normalize voice";
+
+    /// <inheritdoc />
+    public Score Apply(Score score, EditContext context)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        return RhythmicScoreNormalizer.NormalizeVoice(score, context);
+    }
+}
+
 /// <summary>Adds a written pitch to a chord or replaces a rest with a note.</summary>
 public sealed record InsertNoteCommand(EventId EventId, Pitch Pitch, Duration? Duration = null) : IScoreCommand
 {
