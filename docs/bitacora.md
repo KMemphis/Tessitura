@@ -145,3 +145,9 @@
 - La cabecera reserva posiciones horizontales para clave, alteraciones de la armadura y cifras del compás, con anchos derivados de las cajas SMuFL. La colocación vertical de esos símbolos corresponde a F1.9.
 - Tres pruebas nuevas verifican que la blanca ocupa 1,6 veces el ancho ideal de la negra, que una alteración medida con las cajas reales de Bravura no toca la nota anterior y que los elementos de cabecera no se superponen horizontalmente.
 - `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 80 pruebas sin fallos ni omisiones. Siguiente tarea: F1.9, colocación de notas, silencios y símbolos en el pentagrama.
+
+## 2026-09-29 · F1.9 Colocación en el pentagrama
+
+- Se añadió un colocador en Engraving para cabezas, plicas, alteraciones, puntillos, ocho figuras de silencio y líneas adicionales, usando cajas y anclajes SMuFL. Las plicas de notas con varias líneas adicionales llegan como mínimo a la línea central, según *Behind Bars*, «Ground Rules > Stems».
+- El propietario aprobó las imágenes de referencia de la escala de cuatro octavas y todos los silencios. Se guardaron versiones renderizadas por CI para macOS, Windows y Ubuntu; una prueba compara cada nuevo renderizado con la referencia de su plataforma y conserva PNG candidato y diferencia si falla.
+- Once pruebas nuevas cubren el anclaje de plica, extensión y líneas adicionales, separación de alteraciones y puntillos, los ocho silencios y ambas imágenes. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 91 pruebas sin fallos ni omisiones. [CI #36659222134](https://github.com/KMemphis/Tessitura/actions/runs/36659222134) pasó en Windows, macOS y Ubuntu. Siguiente tarea: F1.10, barras de corchea.

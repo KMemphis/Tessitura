@@ -37,6 +37,12 @@ jobs:
           name: music-preview-${{ matrix.os }}
           path: captures/music-preview.png
           if-no-files-found: error
+      - name: Upload staff placement candidates
+        uses: actions/upload-artifact@v6
+        with:
+          name: staff-placement-${{ matrix.os }}
+          path: captures/f1.9-*-candidate.png
+          if-no-files-found: error
       - name: Upload reference differences
         if: failure()
         uses: actions/upload-artifact@v6
