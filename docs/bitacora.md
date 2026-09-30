@@ -120,3 +120,9 @@
 - Se creó `Style` inmutable en Engraving. Los grosores de pentagrama, plica, barra y línea adicional, la separación de barras y la extensión de líneas adicionales proceden de `engravingDefaults` de Bravura; cada propiedad cita su clave.
 - La plica normal de 3,5 espacios sigue [*Behind Bars*, «Ground Rules > Stems»](https://www.behindbarsnotation.co.uk/contents/sample_pages.pdf). Los mínimos configurables de Tessitura, 0,25 espacios entre alteración y nota y 0,5 espacios entre columnas, se inspiran respectivamente en las secciones «Accidentals > Placing» y «Ground Rules > Spacing symbols» del [índice del libro](https://behindbarsnotation.co.uk/contents/toc.pdf); esas dos cifras son elecciones del producto, no valores atribuidos al libro.
 - Dos pruebas nuevas comprueban los valores frente a los metadatos de Bravura y la ida y vuelta JSON con modificaciones. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 42 pruebas sin fallos ni omisiones. Siguiente tarea: F1.5, resolución de alteraciones.
+
+## 2026-09-29 · F1.5 Resolución de alteraciones
+
+- Se añadió en Engraving un resolutor que sigue la altura escrita por paso y octava, la armadura vigente y el estado de cada compás. Una continuación de ligadura no repite el signo y establece el estado para notas posteriores. No se modificó el modelo de dominio de Core.
+- Pasaron 18 escenarios, incluidos becuadros de cancelación, repetición dentro y fuera del compás, armaduras con sostenidos y bemoles, cambios de armadura, enarmonía, octavas independientes y ligaduras. Dos casos adicionales rechazan armaduras fuera de siete alteraciones.
+- Las reglas se documentaron en código con las secciones «Accidentals and Key Signatures» y «Ties» de [*Behind Bars*](https://behindbarsnotation.co.uk/contents/toc.pdf). `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 62 pruebas sin fallos ni omisiones. Siguiente tarea: F1.6, plicas y agrupación automática de barras.
