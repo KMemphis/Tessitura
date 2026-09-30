@@ -49,6 +49,12 @@ jobs:
           name: beam-candidates-${{ matrix.os }}
           path: captures/f1.10-*-candidate.png
           if-no-files-found: error
+      - name: Upload first-page text candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: first-page-text-${{ matrix.os }}
+          path: captures/f1.13-first-page-candidate.png
+          if-no-files-found: error
       - name: Upload reference differences
         if: failure()
         uses: actions/upload-artifact@v6

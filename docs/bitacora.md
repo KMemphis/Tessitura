@@ -167,3 +167,10 @@
 
 - Se añadió `VerticalPageLayouter` para ubicar sistemas en páginas y calcular las posiciones de cada pentagrama a partir de su skyline básico. La separación toma el mayor valor entre la distancia mínima y la suma de los salientes vecinos más la holgura; si el sistema no cabe en una página, se informa el error en vez de solapar contenido.
 - Cuatro pruebas verifican separación por skyline, paginación de una partitura de diez páginas sin solapes, empaquetado de sistemas cuando caben y rechazo de un sistema demasiado alto. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 106 pruebas sin fallos ni omisiones. [CI #36662666716](https://github.com/KMemphis/Tessitura/actions/runs/36662666716) pasó en Windows, macOS y Ubuntu. Siguiente tarea: F1.13, textos de página.
+
+## 2026-09-29 · F1.13 Textos de página
+
+- Se añadió la fuente Noto Serif variable con su licencia OFL y suma SHA-256 en `assets/fonts/README.md`. `PageTextLayouter` usa HarfBuzz para medir y colocar centrados el título y el compositor, conserva los identificadores de los números de compás y omite los campos vacíos. `DisplayListRenderer` dibuja las primitivas de texto con la misma fuente y modelado.
+- El propietario revisó las candidatas de primera página para macOS, Windows y Ubuntu e indicó continuar el plan hasta F5; se adoptaron como referencias aprobadas. Una prueba compara cada ejecución con la imagen de su plataforma y adjunta la candidata a CI. Se toleran hasta 500 píxeles distintos con diferencia máxima de 16 niveles por canal para cubrir variaciones de antialiasing entre máquinas.
+- Las pruebas cubren el centrado con acentos, las posiciones de los números de compás, la omisión de texto vacío y las tres referencias. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 109 pruebas sin fallos ni omisiones. [CI #36663977981](https://github.com/KMemphis/Tessitura/actions/runs/36663977981) pasó en Windows, macOS y Ubuntu.
+- No quedan pendientes de F1.13. Siguiente tarea: F1.14, exportación PDF.

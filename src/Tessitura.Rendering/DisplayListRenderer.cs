@@ -1,4 +1,5 @@
 using SkiaSharp;
+using SkiaSharp.HarfBuzz;
 using Tessitura.Engraving.DisplayLists;
 using DisplayPath = Tessitura.Engraving.DisplayLists.Path;
 using DisplayRect = Tessitura.Engraving.DisplayLists.Rect;
@@ -9,13 +10,30 @@ namespace Tessitura.Rendering;
 public sealed class DisplayListRenderer : IDisposable
 {
     private readonly SKTypeface _musicTypeface;
+    private readonly SKTypeface _textTypeface;
+    private readonly SKShaper _textShaper;
+    private readonly bool _ownsTextTypeface;
 
     /// <summary>Loads the SMuFL font used by glyph primitives.</summary>
     /// <param name="musicFontPath">The SMuFL OpenType font file.</param>
-    public DisplayListRenderer(string musicFontPath)
+    /// <param name="textFontPath">The optional OFL text font file.</param>
+    public DisplayListRenderer(string musicFontPath, string? textFontPath = null)
     {
         _musicTypeface = SKTypeface.FromFile(musicFontPath)
             ?? throw new FileNotFoundException("The music font could not be loaded.", musicFontPath);
+        if (textFontPath is null)
+        {
+            _textTypeface = SKTypeface.Default;
+            _ownsTextTypeface = false;
+        }
+        else
+        {
+            _textTypeface = SKTypeface.FromFile(textFontPath)
+                ?? throw new FileNotFoundException("The page-text font could not be loaded.", textFontPath);
+            _ownsTextTypeface = true;
+        }
+
+        _textShaper = new SKShaper(_textTypeface);
     }
 
     /// <summary>Draws one page on an existing canvas at a chosen staff-space scale.</summary>
@@ -31,7 +49,7 @@ public sealed class DisplayListRenderer : IDisposable
         using SKPaint ink = new() { Color = SKColors.Black, IsAntialias = true };
         using SKPaint stroke = new() { Color = SKColors.Black, IsAntialias = true };
         using SKFont musicFont = new(_musicTypeface, staffSpace * 4);
-        using SKFont textFont = new(SKTypeface.Default, staffSpace);
+        using SKFont textFont = new(_textTypeface, staffSpace);
 
         foreach (DrawingPrimitive primitive in page.Primitives)
         {
@@ -65,9 +83,9 @@ public sealed class DisplayListRenderer : IDisposable
 
                 case Text text:
                     textFont.Size = (float)(text.Size * staffSpace);
-                    canvas.DrawText(text.Content,
-                        (float)(text.Origin.X * staffSpace),
-                        (float)(text.Origin.Y * staffSpace),
+                    canvas.DrawShapedText(_textShaper, text.Content,
+                        new SKPoint((float)(text.Origin.X * staffSpace),
+                            (float)(text.Origin.Y * staffSpace)),
                         SKTextAlign.Left, textFont, ink);
                     break;
 
@@ -102,7 +120,16 @@ public sealed class DisplayListRenderer : IDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose() => _musicTypeface.Dispose();
+    public void Dispose()
+    {
+        _textShaper.Dispose();
+        if (_ownsTextTypeface)
+        {
+            _textTypeface.Dispose();
+        }
+
+        _musicTypeface.Dispose();
+    }
 
     private static SKPoint ToSkPoint(DisplayPoint point, float scale) =>
         new((float)(point.X * scale), (float)(point.Y * scale));
