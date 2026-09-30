@@ -67,7 +67,8 @@ public sealed class MusicXmlCorpusTests
     [Fact]
     public void MetricSeparatesLosslessLossyAndUnsupportedRoundTrips()
     {
-        IReadOnlyList<CorpusFile> files = [.. MusicXmlCorpus.Enumerate().Where(f => f.Source == "public").Take(20)];
+        IReadOnlyList<CorpusFile> files = [.. MusicXmlCorpus.Enumerate()
+            .Where(f => f.Source == "public" && MusicXmlSignature.FromFile(f.Path).Events.Any(e => e.Kind == "note")).Take(20)];
         string work = Path.Combine(Path.GetTempPath(), $"tessitura-fidelity-{Guid.NewGuid():N}");
         try
         {

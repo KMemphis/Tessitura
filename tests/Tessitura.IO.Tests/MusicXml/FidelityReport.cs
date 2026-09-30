@@ -80,17 +80,17 @@ public sealed class FidelityReport
             {
                 if (!roundTrip.TryRoundTrip(file.Path, output))
                 {
-                    entries.Add(new FidelityEntry(file, "unsupported", 0, original.Events.Count, 0, ""));
+                    entries.Add(new FidelityEntry(file, "unsupported", 0, original.Events.Count(e => e.Kind != "rest"), 0, ""));
                     continue;
                 }
 
-                (int matched, int missing, int extra) = MusicXmlSignature.Compare(original, MusicXmlSignature.FromFile(output));
+                (int matched, int missing, int extra) = MusicXmlSignature.Compare(original, MusicXmlSignature.FromFile(output), notesOnly: true);
                 entries.Add(new FidelityEntry(file, missing == 0 && extra == 0 ? "lossless" : "lossy",
-                    matched, original.Events.Count, extra, ""));
+                    matched, matched + missing, extra, ""));
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                entries.Add(new FidelityEntry(file, "failed", 0, original.Events.Count, 0,
+                entries.Add(new FidelityEntry(file, "failed", 0, original.Events.Count(e => e.Kind != "rest"), 0,
                     $"{exception.GetType().Name}: {exception.Message}"));
             }
         }
@@ -137,6 +137,7 @@ public sealed class FidelityReport
         text.Append(c, $"| Sin pérdidas (dentro del alcance) | {LosslessShareInScope:P1} |\n");
         text.Append(c, $"| Eventos conservados (dentro del alcance) | {EventShareInScope:P1} |\n");
         text.Append("| Objetivo de la definición | ≥ 95 % |\n\n");
+        text.Append("La comparación mide notas con su instante, duración, altura escrita y ligadura; los silencios no cuentan porque el motor rítmico los reescribe a los pulsos.\n\n");
         text.Append("## Por origen y grupo\n\n| Origen | Grupo | Archivos | Alcance | Sin pérdidas | Con pérdidas | No soportados | Fallos | Ilegibles |\n| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
         foreach (IGrouping<(string Source, string Group), FidelityEntry> group in Entries
             .GroupBy(e => (e.File.Source, e.File.Group)).OrderBy(g => g.Key.Source, StringComparer.Ordinal).ThenBy(g => g.Key.Group, StringComparer.Ordinal))

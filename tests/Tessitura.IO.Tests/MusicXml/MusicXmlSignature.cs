@@ -127,17 +127,23 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
     /// <param name="expected">The signature of the original file.</param>
     /// <param name="actual">The signature of the round-tripped file.</param>
     /// <returns>Matched, missing and extra event counts.</returns>
-    public static (int Matched, int Missing, int Extra) Compare(MusicXmlSignature expected, MusicXmlSignature actual)
+    public static (int Matched, int Missing, int Extra) Compare(MusicXmlSignature expected, MusicXmlSignature actual,
+        bool notesOnly = false)
     {
+        // With notesOnly, rests are ignored: the rhythmic engine rewrites them to the beats, which is not a loss.
+        IEnumerable<MusicXmlEvent> expectedEvents = notesOnly ? expected.Events.Where(e => e.Kind != "rest") : expected.Events;
+        IEnumerable<MusicXmlEvent> actualEvents = notesOnly ? actual.Events.Where(e => e.Kind != "rest") : actual.Events;
         Dictionary<string, int> remaining = [];
-        foreach (MusicXmlEvent e in expected.Events)
+        int expectedCount = 0;
+        foreach (MusicXmlEvent e in expectedEvents)
         {
+            expectedCount++;
             remaining[e.Key] = remaining.GetValueOrDefault(e.Key) + 1;
         }
 
         int matched = 0;
         int extra = 0;
-        foreach (MusicXmlEvent e in actual.Events)
+        foreach (MusicXmlEvent e in actualEvents)
         {
             if (remaining.TryGetValue(e.Key, out int count) && count > 0)
             {
@@ -150,7 +156,7 @@ public sealed record MusicXmlSignature(IReadOnlyList<MusicXmlEvent> Events, IRea
             }
         }
 
-        return (matched, expected.Events.Count - matched, extra);
+        return (matched, expectedCount - matched, extra);
     }
 
     private static XDocument Parse(Stream stream)

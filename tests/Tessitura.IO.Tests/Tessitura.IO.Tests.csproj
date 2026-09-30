@@ -12,5 +12,6 @@
     <Content Include="../assets/sf_spec_test.sf2" Link="sf_spec_test.sf2" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Tessitura.IO/Tessitura.IO.csproj" />
     <Content Include="Corpus/**/*" Exclude="Corpus/**/*.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Schema/*.xsd" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
