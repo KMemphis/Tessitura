@@ -54,13 +54,13 @@ public sealed class PlaybackController : IDisposable
         {
             int instrument = i;
             string name = _input.CurrentScore.Instruments[i].Name;
-            actions.Add(new($"mixer.mute.{i + 1}", $"Silenciar {name}", $"Alt+Shift+{i + 1}",
+            actions.Add(new($"mixer.mute.{i + 1}", $"Silenciar {name}", $"Ctrl+F{i + 1}",
                 () => Mixer.SetMute(instrument, !Mixer.IsMuted(instrument))));
-            actions.Add(new($"mixer.solo.{i + 1}", $"Solo {name}", $"Ctrl+Shift+{i + 1}",
+            actions.Add(new($"mixer.solo.{i + 1}", $"Solo {name}", $"Alt+F{i + 1}",
                 () => Mixer.SetSolo(instrument, !Mixer.IsSoloed(instrument))));
-            actions.Add(new($"mixer.volume-up.{i + 1}", $"Subir volumen de {name}", $"Alt+Ctrl+{i + 1}",
+            actions.Add(new($"mixer.volume-up.{i + 1}", $"Subir volumen de {name}", $"Shift+F{i + 1}",
                 () => Mixer.SetVolume(instrument, Mixer.GetVolume(instrument) + 0.1f)));
-            actions.Add(new($"mixer.volume-down.{i + 1}", $"Bajar volumen de {name}", $"Alt+Ctrl+Shift+{i + 1}",
+            actions.Add(new($"mixer.volume-down.{i + 1}", $"Bajar volumen de {name}", $"Ctrl+Shift+F{i + 1}",
                 () => Mixer.SetVolume(instrument, Mixer.GetVolume(instrument) - 0.1f)));
         }
 

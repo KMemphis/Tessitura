@@ -54,7 +54,7 @@ internal sealed class EditorSession : IDisposable
             new("file.save-as", "Guardar como…", "Ctrl+Shift+S", () => _ = SaveAsync(saveAs: true)),
             new("file.export-pdf", "Exportar a PDF…", "Ctrl+E", () => _ = ExportPdfAsync()),
             new("midi.connect", "Conectar el primer teclado MIDI", "Ctrl+Alt+M", ConnectMidi),
-            new("midi.disconnect", "Desconectar el teclado MIDI", "Ctrl+Alt+Shift+M", _midi.Close),
+            new("midi.disconnect", "Desconectar el teclado MIDI", "Ctrl+Alt+U", _midi.Close),
             new("file.close", "Cerrar y volver al inicio", "Ctrl+W", closeToStart),
         ];
         string soundFont = Path.Combine(assetsPath, "..", "soundfonts", "default.sf2");
