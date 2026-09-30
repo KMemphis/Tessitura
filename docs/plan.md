@@ -43,7 +43,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F1.13 · Textos de página.** Título, compositor y números de compás con HarfBuzzSharp. *Hecho cuando:* imágenes de referencia de la primera página.
 - [x] **F1.14 · Exportación PDF.** `SKDocument.CreatePdf` con fuentes incrustadas. *Hecho cuando:* el PDF abre en tres visores y coincide con la pantalla.
 - [x] **F1.15 · Maquetación incremental y rendimiento.** Caché de anchos por compás, reflujo limitado, cancelación y un generador de la partitura de referencia (30 pentagramas × 300 compases). *Hecho cuando:* BenchmarkDotNet mide maquetación completa por debajo de 1,5 s y un cambio de una nota por debajo de 10 ms.
-- [ ] **F1.16 · Catálogo de referencia.** 20 ejemplos (escalas, ritmos, armaduras, compases compuestos, piano, cuarteto). *Hecho cuando:* los 20 están aprobados por ti.
+- [x] **F1.16 · Catálogo de referencia.** 20 ejemplos (escalas, ritmos, armaduras, compases compuestos, piano, cuarteto). *Hecho cuando:* los 20 están aprobados por ti.
 
 **Puerta F1:** 20 ejemplos de referencia aprobados y maquetación completa de la partitura de referencia dentro del presupuesto.
 

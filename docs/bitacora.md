@@ -188,3 +188,10 @@
 - El generador del proyecto de benchmarks crea 30 pentagramas, 300 compases de 4/4 y 36.000 notas. Con BenchmarkDotNet 0.15.8, Release, Apple M5 y .NET 10.0.11: maquetación completa 4,86 ms de media; cambio de una nota 38,59 µs. Se midieron 5 iteraciones por caso; ambos resultados quedan por debajo de los límites de 1,5 s y 10 ms.
 - Seis pruebas nuevas cubren el tamaño de referencia, cálculo con métricas SMuFL, invalidación de un solo compás, reutilización cuando el ancho no cambia, cancelación y continuidad de los sistemas. dotnet build terminó con 0 advertencias y 0 errores; dotnet test pasó 117 pruebas sin fallos ni omisiones. [CI #36666323833](https://github.com/KMemphis/Tessitura/actions/runs/36666323833) pasó en Windows, macOS y Ubuntu.
 - No quedan pendientes de F1.15. Siguiente tarea: F1.16, catálogo de 20 ejemplos de referencia.
+
+## 2026-09-30 · F1.16 Catálogo de referencia
+
+- Se creó el catálogo de 20 páginas para escalas, armaduras, alteraciones, figuras y silencios, ritmos, compases simples y compuestos, piano, cuarteto de cuerda y líneas adicionales. El propietario aprobó los ejemplos; quedaron guardadas 20 referencias por plataforma (macOS, Windows y Ubuntu).
+- Dos pruebas nuevas verifican los 20 identificadores, renderizan cada página y comparan el PNG con su referencia de plataforma. La matriz usa imágenes específicas por sistema operativo para conservar los umbrales de comparación frente a diferencias de rasterizado.
+- `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores. `dotnet test Tessitura.sln --configuration Release --no-build` pasó 119 pruebas, sin fallos ni omisiones. [CI #36668009068](https://github.com/KMemphis/Tessitura/actions/runs/36668009068) pasó en Windows, macOS y Ubuntu.
+- No quedan tareas de F1. Para la puerta F1, la maquetación de 30 pentagramas × 300 compases midió 4,86 ms completa y 38,59 µs por cambio de una nota; los 20 ejemplos están aprobados. Siguiente: presentar la evidencia de la puerta F1 y esperar aprobación antes de F2.
