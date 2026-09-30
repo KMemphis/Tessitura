@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessitura.Engraving.Tests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessitura.IO.Tests", "tests\Tessitura.IO.Tests\Tessitura.IO.Tests.csproj", "{7479662A-DB08-4C60-A163-2A415B13DFA0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tessitura.Playback.Tests", "tests\Tessitura.Playback.Tests\Tessitura.Playback.Tests.csproj", "{624DB67D-4D50-4039-8976-EB86AE884CB0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -199,6 +201,18 @@ Global
 		{7479662A-DB08-4C60-A163-2A415B13DFA0}.Release|x64.Build.0 = Release|Any CPU
 		{7479662A-DB08-4C60-A163-2A415B13DFA0}.Release|x86.ActiveCfg = Release|Any CPU
 		{7479662A-DB08-4C60-A163-2A415B13DFA0}.Release|x86.Build.0 = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|x64.Build.0 = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Debug|x86.Build.0 = Debug|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|x64.ActiveCfg = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|x64.Build.0 = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|x86.ActiveCfg = Release|Any CPU
+		{624DB67D-4D50-4039-8976-EB86AE884CB0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -217,5 +231,6 @@ Global
 		{7A14B90F-7366-4D91-9872-01EC49CC9ECD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D0251425-F97D-4B1E-A5E4-E50F01110008} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{7479662A-DB08-4C60-A163-2A415B13DFA0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{624DB67D-4D50-4039-8976-EB86AE884CB0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

@@ -72,7 +72,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F3.2 · Importador MusicXML.** Formatos `.musicxml` y `.mxl`, tolerante con errores y con avisos al usuario. *Hecho cuando:* importa sin excepciones el 100 % del corpus dentro del alcance de F3.
 - [x] **F3.3 · Exportador MusicXML.** Versión 4.0 validada contra el esquema. *Hecho cuando:* toda exportación valida y el 90 % del corpus vuelve sin pérdidas.
 - [x] **F3.4 · MIDI de archivo.** Importación con cuantización y exportación SMF tipo 1. *Hecho cuando:* una partitura exportada y reimportada conserva alturas y ritmos.
-- [ ] **F3.5 · Modelo de interpretación.** Mapa de tempo, dinámicas a velocidad y articulaciones a duración. *Hecho cuando:* pruebas unitarias de los valores de la definición (staccato al 50 %, tenuto al 100 %).
+- [x] **F3.5 · Modelo de interpretación.** Mapa de tempo, dinámicas a velocidad y articulaciones a duración. *Hecho cuando:* pruebas unitarias de los valores de la definición (staccato al 50 %, tenuto al 100 %).
 - [ ] **F3.6 · Secuenciador y audio.** Secuenciador en muestras, `IAudioOutput` con miniaudio, MeltySynth y un SoundFont con licencia libre incluido. *Hecho cuando:* suena la partitura de referencia sin cortes y el hilo de audio no asigna memoria; además, se comprueban reproducción y latencia física en Windows y Linux y el búfer objetivo inferior a 20 ms.
 - [ ] **F3.7 · Cabeza de reproducción.** Transporte, `Espacio`, cursor sincronizado con el reloj de audio y seguimiento de la vista. *Hecho cuando:* el desfase entre cursor y sonido es inferior a un fotograma.
 - [ ] **F3.8 · Mezclador.** Volumen, panorama, silencio y solo por instrumento, y programa General MIDI automático. *Hecho cuando:* cada control actúa en tiempo real.
