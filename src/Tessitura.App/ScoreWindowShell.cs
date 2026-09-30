@@ -24,6 +24,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
     private Popup? _viewMenuPopup;
     private Popup? _viewSelectorPopup;
     private ActionRegistry? _actions;
+    private CommandPalette? _commandPalette;
     private bool _isDarkTheme = true;
 
     /// <summary>Creates the main editor layout around an existing score canvas.</summary>
@@ -115,6 +116,7 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         ImmutableArray<ActionDefinition>.Builder actions = ImmutableArray.CreateBuilder<ActionDefinition>();
         actions.AddRange((ReadOnlySpan<ActionDefinition>)
         [
+        new("command-palette.open", "Abrir paleta de comandos", "Ctrl+K", ToggleCommandPalette),
         new("view.page", "Vista de página", "Ctrl+Shift+1", () => Canvas.Focus()),
         new("view.open-menu", "Abrir menú Ver", "Ctrl+Shift+V", () => TogglePopup(_viewMenuPopup)),
         new("view.open-selector", "Abrir selector de vista", "Ctrl+Shift+2",
@@ -227,6 +229,32 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         }
 
         _actions = actions;
+        _commandPalette = new CommandPalette(actions, () => Canvas.Focus());
+        Grid.SetRowSpan(_commandPalette, 4);
+        Grid.SetColumnSpan(_commandPalette, 3);
+        _popupSurfaces.Add(_commandPalette);
+        _layout.Children.Add(_commandPalette);
+        ApplyTheme();
+    }
+
+    /// <summary>Gets the command palette, available once an action registry is attached.</summary>
+    public CommandPalette? CommandPalette => _commandPalette;
+
+    private void ToggleCommandPalette()
+    {
+        if (_commandPalette is null)
+        {
+            return;
+        }
+
+        if (_commandPalette.IsOpen)
+        {
+            _commandPalette.Close();
+        }
+        else
+        {
+            _commandPalette.Open();
+        }
     }
 
     /// <inheritdoc />
