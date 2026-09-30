@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Tessitura.Rendering/Tessitura.Rendering.csproj" />
+    <ProjectReference Include="../Tessitura.Editing/Tessitura.Editing.csproj" />
+    <ProjectReference Include="../Tessitura.Playback/Tessitura.Playback.csproj" />
+    <ProjectReference Include="../Tessitura.IO/Tessitura.IO.csproj" />
+  </ItemGroup>
+</Project>

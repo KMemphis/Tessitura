@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Tessitura.Core/Tessitura.Core.csproj" />
+    <ProjectReference Include="../Tessitura.Smufl/Tessitura.Smufl.csproj" />
+  </ItemGroup>
+</Project>
