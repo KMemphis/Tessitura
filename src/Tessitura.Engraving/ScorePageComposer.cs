@@ -278,6 +278,21 @@ public sealed class ScorePageComposer
             out (int Voice, EventId Event, int Note)[] order);
         bool manyVoices = staffMeasure.Voices.Length > 1;
         double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
+        Dictionary<EventId, List<ArticulationKind>> articulations = [];
+        foreach (Attachment attachment in score.AttachmentList)
+        {
+            if (attachment is ArticulationAttachment mark)
+            {
+                if (!articulations.TryGetValue(mark.Target, out List<ArticulationKind>? list))
+                {
+                    list = [];
+                    articulations[mark.Target] = list;
+                }
+
+                list.Add(mark.Kind);
+            }
+        }
+
         double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
             score.Measures[measureIndex].TimeSignature.Length.Den;
         foreach (Voice voice in staffMeasure.Voices)
@@ -294,12 +309,12 @@ public sealed class ScorePageComposer
                 if (topLevel is TupletGroup group)
                 {
                     AddTuplet(primitives, placer, group, voice, staffMeasure, clef, measureStartX, measureWidth,
-                        staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
+                        staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift, articulations);
                     continue;
                 }
 
                 AddLeaf(primitives, placer, topLevel, topLevel.Onset, voice, staffMeasure, clef, measureStartX, measureWidth,
-                    staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
+                    staffTop, barLength, order, marks, manyVoices, headWidth, voiceStem, restShift, articulations);
             }
         }
     }
@@ -307,7 +322,8 @@ public sealed class ScorePageComposer
     private void AddLeaf(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer, MusicEvent leaf,
         Fraction position, Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth,
         double staffTop, double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks,
-        bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift)
+        bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift,
+        Dictionary<EventId, List<ArticulationKind>> articulations)
     {
         double x = measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
         if (leaf is Rest rest)
@@ -337,6 +353,7 @@ public sealed class ScorePageComposer
 
             double shift = manyVoices && CollidesWithLowerVoice(staffMeasure, voice, chord, chord.Notes[0], clef) ? headWidth : 0;
             primitives.AddRange(placer.PlaceChord(chord.Id, notes, chord.Duration, x + shift, staffTop, clef, voiceStem));
+            AddArticulations(primitives, placer, chord, x + shift + headWidth / 2, staffTop, clef, voiceStem, articulations);
             return;
         }
 
@@ -362,6 +379,31 @@ public sealed class ScorePageComposer
             primitives.AddRange(placer.PlaceNote(chord.Id, note.Pitch,
                 chord.Duration, accidental, x + chordOffset, staffTop, clef, voiceStem));
         }
+    
+        AddArticulations(primitives, placer, chord, x + headWidth / 2, staffTop, clef, voiceStem, articulations);
+    }
+
+    private static void AddArticulations(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer,
+        Chord chord, double centerX, double staffTop, Clef clef, StemDirection? voiceStem,
+        Dictionary<EventId, List<ArticulationKind>> articulations)
+    {
+        if (!articulations.TryGetValue(chord.Id, out List<ArticulationKind>? kinds))
+        {
+            return;
+        }
+
+        int lowest = int.MaxValue;
+        int highest = int.MinValue;
+        foreach (Note note in chord.Notes)
+        {
+            int position = StaffPitchPosition.Get(note.Pitch, clef);
+            lowest = Math.Min(lowest, position);
+            highest = Math.Max(highest, position);
+        }
+
+        StemDirection stem = StaffElementPlacer.ChooseStem(lowest, highest, voiceStem);
+        primitives.AddRange(placer.PlaceArticulations(chord.Id, kinds, centerX, staffTop, lowest, highest, stem,
+            chord.Duration.Value != NoteValue.Whole));
     }
 
     // Draws the members at their sounding onsets, then the bracket and number above the group.
@@ -369,14 +411,15 @@ public sealed class ScorePageComposer
     private void AddTuplet(ImmutableArray<DrawingPrimitive>.Builder primitives, StaffElementPlacer placer, TupletGroup group,
         Voice voice, StaffMeasure staffMeasure, Clef clef, double measureStartX, double measureWidth, double staffTop,
         double barLength, (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks, bool manyVoices,
-        double headWidth, StemDirection? voiceStem, double restShift)
+        double headWidth, StemDirection? voiceStem, double restShift,
+        Dictionary<EventId, List<ArticulationKind>> articulations)
     {
         double left = double.MaxValue;
         double right = double.MinValue;
         foreach ((MusicEvent leaf, Fraction onset, _) in new[] { (MusicEvent)group }.Flatten())
         {
             AddLeaf(primitives, placer, leaf, onset, voice, staffMeasure, clef, measureStartX, measureWidth, staffTop,
-                barLength, order, marks, manyVoices, headWidth, voiceStem, restShift);
+                barLength, order, marks, manyVoices, headWidth, voiceStem, restShift, articulations);
             double x = measureStartX + measureWidth * ((double)onset.Num / onset.Den) / barLength;
             left = Math.Min(left, x);
             right = Math.Max(right, x + 1.2);

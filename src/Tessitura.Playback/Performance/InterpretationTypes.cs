@@ -65,6 +65,30 @@ public sealed record PerformanceHints(
 {
     /// <summary>Gets hints with no markings.</summary>
     public static PerformanceHints Empty { get; } = new([], [], []);
+
+    /// <summary>Reads the dynamics and articulations attached to a score's events.</summary>
+    /// <param name="score">The score.</param>
+    /// <returns>Hints for the interpreter; tempo marks come with F4.5.</returns>
+    public static PerformanceHints FromScore(Score score)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        ImmutableArray<DynamicMark>.Builder dynamics = ImmutableArray.CreateBuilder<DynamicMark>();
+        ImmutableArray<ArticulationMark>.Builder articulations = ImmutableArray.CreateBuilder<ArticulationMark>();
+        foreach (Attachment attachment in score.AttachmentList)
+        {
+            switch (attachment)
+            {
+                case DynamicAttachment dynamic:
+                    dynamics.Add(new DynamicMark(dynamic.Target, (Dynamic)(int)dynamic.Level));
+                    break;
+                case ArticulationAttachment articulation when articulation.Kind <= ArticulationKind.Marcato:
+                    articulations.Add(new ArticulationMark(articulation.Target, (Articulation)(int)articulation.Kind));
+                    break;
+            }
+        }
+
+        return new PerformanceHints(dynamics.ToImmutable(), articulations.ToImmutable(), []);
+    }
 }
 
 /// <summary>Sets how dynamics and articulations are translated into MIDI velocity and sounding length.</summary>

@@ -45,7 +45,7 @@ public static class MusicXmlExporter
         int staffBase = 0;
         for (int index = 0; index < score.Instruments.Length; index++)
         {
-            root.Add(BuildPart(score, index, staffBase, divisions));
+            root.Add(BuildPart(score, index, staffBase, divisions, score.AttachmentList.ToLookup(a => a.Target)));
             staffBase += score.Instruments[index].Staves.Length;
         }
 
@@ -111,7 +111,8 @@ public static class MusicXmlExporter
         document.Save(writer);
     }
 
-    private static XElement BuildPart(Score score, int instrumentIndex, int staffBase, int divisions)
+    private static XElement BuildPart(Score score, int instrumentIndex, int staffBase, int divisions,
+        ILookup<EventId, Attachment> attachments)
     {
         Instrument instrument = score.Instruments[instrumentIndex];
         XElement part = new("part", new XAttribute("id", PartId(instrumentIndex)));
@@ -192,7 +193,7 @@ public static class MusicXmlExporter
 
                 foreach (MusicEvent musicEvent in voice.Events)
                 {
-                    AddTree(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties, Fraction.One, 1, 1, null);
+                    AddTree(measureElement, musicEvent, staff, voiceNumber, staffCount, divisions, ties, Fraction.One, 1, 1, null, attachments);
                 }
             }
 
@@ -255,7 +256,7 @@ public static class MusicXmlExporter
     // Walks tuplet groups: every leaf gets the combined time modification of its enclosing groups, and the first
     // and last leaf of a group carry the tuplet start and stop marks.
     private static void AddTree(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber, int staffCount, int divisions,
-        HashSet<Pitch> openTies, Fraction scale, int actual, int normal, string? bracket)
+        HashSet<Pitch> openTies, Fraction scale, int actual, int normal, string? bracket, ILookup<EventId, Attachment> attachments)
     {
         if (musicEvent is TupletGroup group)
         {
@@ -264,13 +265,13 @@ public static class MusicXmlExporter
             {
                 string? mark = index == 0 ? "start" : index == childCount - 1 ? "stop" : null;
                 AddTree(measure, group.Children[index], staff, voiceNumber, staffCount, divisions, openTies,
-                    scale * group.Ratio, actual * group.Actual, normal * group.Normal, mark);
+                    scale * group.Ratio, actual * group.Actual, normal * group.Normal, mark, attachments);
             }
 
             return;
         }
 
-        List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale);
+        List<XElement> written = AddEvent(measure, musicEvent, staff, voiceNumber, staffCount, divisions, openTies, scale, attachments);
         if (actual == normal)
         {
             return;
@@ -300,9 +301,19 @@ public static class MusicXmlExporter
     }
 
     private static List<XElement> AddEvent(XElement measure, MusicEvent musicEvent, int staff, int voiceNumber,
-        int staffCount, int divisions, HashSet<Pitch> openTies, Fraction scale)
+        int staffCount, int divisions, HashSet<Pitch> openTies, Fraction scale, ILookup<EventId, Attachment> attachments)
     {
         List<XElement> written = [];
+        foreach (Attachment attachment in attachments[musicEvent.Id])
+        {
+            if (attachment is DynamicAttachment dynamic)
+            {
+                measure.Add(new XElement("direction", new XAttribute("placement", "below"),
+                    new XElement("direction-type", new XElement("dynamics", new XElement(dynamic.Level.ToString().ToLowerInvariant()))),
+                    staffCount > 1 ? new XElement("staff", staff + 1) : null));
+            }
+        }
+
         string voiceLabel = (staff * 4 + voiceNumber).ToString(CultureInfo.InvariantCulture);
         int duration = ToDivisions(musicEvent.Length * scale, divisions);
         if (musicEvent is Rest)
@@ -338,7 +349,69 @@ public static class MusicXmlExporter
 
         openTies.Clear();
         openTies.UnionWith(nextTies);
+        AddMarks(written, attachments[musicEvent.Id]);
         return written;
+    }
+
+    // Articulations, ornaments and fermatas go into the notations of the first note of the event.
+    private static void AddMarks(List<XElement> written, IEnumerable<Attachment> marks)
+    {
+        List<ArticulationAttachment> articulations = [.. marks.OfType<ArticulationAttachment>()];
+        if (articulations.Count == 0 || written.Count == 0)
+        {
+            return;
+        }
+
+        XElement note = written[0];
+        XElement notations = note.Element("notations") ?? new XElement("notations");
+        XElement? articulationElement = null;
+        XElement? ornamentElement = null;
+        foreach (ArticulationAttachment mark in articulations)
+        {
+            string? name = mark.Kind switch
+            {
+                ArticulationKind.Staccato => "staccato",
+                ArticulationKind.Staccatissimo => "staccatissimo",
+                ArticulationKind.Tenuto => "tenuto",
+                ArticulationKind.Accent => "accent",
+                ArticulationKind.Marcato => "strong-accent",
+                _ => null,
+            };
+            if (name is not null)
+            {
+                articulationElement ??= new XElement("articulations");
+                articulationElement.Add(new XElement(name));
+            }
+            else if (mark.Kind == ArticulationKind.Fermata)
+            {
+                notations.Add(new XElement("fermata"));
+            }
+            else
+            {
+                ornamentElement ??= new XElement("ornaments");
+                ornamentElement.Add(new XElement(mark.Kind switch
+                {
+                    ArticulationKind.Trill => "trill-mark",
+                    ArticulationKind.Mordent => "mordent",
+                    _ => "turn",
+                }));
+            }
+        }
+
+        if (articulationElement is not null)
+        {
+            notations.Add(articulationElement);
+        }
+
+        if (ornamentElement is not null)
+        {
+            notations.Add(ornamentElement);
+        }
+
+        if (notations.Parent is null)
+        {
+            note.Add(notations);
+        }
     }
 
     private static XElement BuildNote(XElement content, int duration, Duration notated, string voice,

@@ -309,6 +309,93 @@ public sealed class StaffElementPlacer
         return result.ToImmutable();
     }
 
+    /// <summary>Chooses the stem direction of a note or chord from its extreme staff positions.</summary>
+    /// <param name="lowest">The lowest staff position (0 is the bottom line).</param>
+    /// <param name="highest">The highest staff position.</param>
+    /// <param name="forced">The direction imposed by the voice, or null.</param>
+    /// <returns>Up or down.</returns>
+    public static StemDirection ChooseStem(int lowest, int highest, StemDirection? forced = null) =>
+        forced is StemDirection.Up or StemDirection.Down
+            ? forced.Value
+            : BeamGrouper.ChooseStemDirection(highest - 4 >= 4 - lowest ? Math.Max(0, highest - 4) : lowest - 4);
+
+    /// <summary>Places articulations and ornaments of one note or chord.</summary>
+    /// <param name="id">The originating score event.</param>
+    /// <param name="kinds">The marks, in any order.</param>
+    /// <param name="centerX">The horizontal centre of the noteheads.</param>
+    /// <param name="staffTop">The top staff-line position.</param>
+    /// <param name="lowest">The lowest staff position of the chord.</param>
+    /// <param name="highest">The highest staff position of the chord.</param>
+    /// <param name="stem">The stem direction; articulations go on the notehead side, opposite the stem.</param>
+    /// <param name="hasStem">Whether the note has a stem; whole notes place marks above.</param>
+    /// <returns>The mark glyphs.</returns>
+    public ImmutableArray<DrawingPrimitive> PlaceArticulations(EventId id, IReadOnlyList<ArticulationKind> kinds,
+        double centerX, double staffTop, int lowest, int highest, StemDirection stem, bool hasStem)
+    {
+        ImmutableArray<DrawingPrimitive>.Builder result = ImmutableArray.CreateBuilder<DrawingPrimitive>();
+        ElementId elementId = new(id.Value);
+        bool below = hasStem && stem == StemDirection.Up;
+        // Behind Bars, Articulation: staccato sits nearest the head, then tenuto, accent and marcato outward.
+        // Ornaments and fermatas go above the staff, fermatas highest.
+        List<ArticulationKind> near = [.. kinds.Where(k => k <= ArticulationKind.Marcato).OrderBy(Rank)];
+        double y = below ? staffTop + 4 - lowest * 0.5 : staffTop + 4 - highest * 0.5;
+        int direction = below ? 1 : -1;
+        foreach (ArticulationKind kind in near)
+        {
+            y += direction * 1.0;
+            double snapped = y;
+            if (snapped >= staffTop && snapped <= staffTop + 4)
+            {
+                // Inside the staff a mark sits in a space, never on a line.
+                snapped = staffTop + Math.Floor(snapped - staffTop) + 0.5;
+                if (Math.Abs(snapped - (y - direction * 1.0)) < 0.5)
+                {
+                    snapped += direction;
+                }
+            }
+
+            y = snapped;
+            string name = $"artic{kind}{(below ? "Below" : "Above")}";
+            result.Add(MakeCenteredGlyph(elementId, name, centerX, y));
+        }
+
+        double top = Math.Min(staffTop - 1.5, staffTop + 4 - highest * 0.5 - 1.5);
+        if (!below && near.Count > 0)
+        {
+            top = Math.Min(top, y - 1.5);
+        }
+
+        foreach (ArticulationKind kind in kinds.Where(k => k > ArticulationKind.Marcato).OrderBy(k => k == ArticulationKind.Fermata ? 1 : 0))
+        {
+            string name = kind switch
+            {
+                ArticulationKind.Fermata => "fermataAbove",
+                ArticulationKind.Trill => "ornamentTrill",
+                ArticulationKind.Mordent => "ornamentMordent",
+                _ => "ornamentTurn",
+            };
+            result.Add(MakeCenteredGlyph(elementId, name, centerX, top));
+            top -= 1.6;
+        }
+
+        return result.ToImmutable();
+    }
+
+    private static int Rank(ArticulationKind kind) => kind switch
+    {
+        ArticulationKind.Staccato or ArticulationKind.Staccatissimo => 0,
+        ArticulationKind.Tenuto => 1,
+        ArticulationKind.Accent => 2,
+        _ => 3,
+    };
+
+    private Glyph MakeCenteredGlyph(ElementId id, string name, double centerX, double y)
+    {
+        Smufl.SmuflBoundingBox box = _metadata.GetBoundingBox(name);
+        double width = box.NorthEast.X - box.SouthWest.X;
+        return MakeGlyph(id, name, centerX - width / 2 - box.SouthWest.X, y);
+    }
+
     /// <summary>Places one rest glyph and its optional augmentation dots.</summary>
     /// <param name="id">The originating score event.</param>
     /// <param name="duration">The notated rest duration.</param>

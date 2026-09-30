@@ -14,7 +14,7 @@ public static class Interpreter
     public static Interpretation Interpret(Score score, PerformanceHints? hints = null, InterpretationSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(score);
-        hints ??= PerformanceHints.Empty;
+        hints ??= PerformanceHints.FromScore(score);
         settings ??= new InterpretationSettings();
         Dictionary<EventId, Dynamic> dynamicAt = [];
         foreach (DynamicMark mark in hints.Dynamics)

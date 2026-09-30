@@ -42,7 +42,19 @@ internal static class ScoreMapper
             content.Add(new StaffMeasureDto(key.StaffIndex, key.MeasureIndex, voices));
         }
 
-        return new ScoreDto(score.Metadata.Title, score.Metadata.Composer, instruments, measures, content);
+        List<AttachmentDto> attachments = [];
+        foreach (Attachment attachment in score.AttachmentList)
+        {
+            attachments.Add(attachment switch
+            {
+                ArticulationAttachment a => new AttachmentDto("articulation", a.Target.Value, (int)a.Kind),
+                DynamicAttachment d => new AttachmentDto("dynamic", d.Target.Value, (int)d.Level),
+                _ => throw new InvalidOperationException($"Attachment {attachment.GetType().Name} cannot be saved."),
+            });
+        }
+
+        return new ScoreDto(score.Metadata.Title, score.Metadata.Composer, instruments, measures, content,
+            attachments.Count == 0 ? null : attachments);
     }
 
     private static EventDto ToEventDto(MusicEvent musicEvent)
@@ -131,7 +143,13 @@ internal static class ScoreMapper
             content[new StaffMeasureKey(entry.Staff, entry.Measure)] = new StaffMeasure(voices.ToImmutable());
         }
 
+        ImmutableArray<Attachment> attachments = [.. (dto.Attachments ?? []).Select(a => a.Kind switch
+        {
+            "articulation" => (Attachment)new ArticulationAttachment(new EventId(a.Target), (ArticulationKind)a.Value),
+            "dynamic" => new DynamicAttachment(new EventId(a.Target), (DynamicLevel)a.Value),
+            _ => throw new InvalidDataException($"Unknown attachment kind '{a.Kind}'."),
+        })];
         return new Score(new ScoreMetadata(dto.Title, dto.Composer), instruments.ToImmutable(),
-            measures.ToImmutable(), content.ToImmutable());
+            measures.ToImmutable(), content.ToImmutable(), attachments.IsEmpty ? default : attachments);
     }
 }

@@ -216,3 +216,24 @@ public sealed class TupletInterpretationTests
         Assert.Equal(0.5, result.Tempo.SecondsAt(group.Length), precision: 12);
     }
 }
+
+public sealed class AttachedMarkInterpretationTests
+{
+    [Fact]
+    public void ArticulationsAndDynamicsAttachedToTheScoreDriveTheInterpretation()
+    {
+        Chord first = new(new EventId(Guid.NewGuid()), Fraction.Zero, new Duration(NoteValue.Quarter, 0), [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto);
+        Chord second = new(new EventId(Guid.NewGuid()), new Fraction(1, 4), new Duration(NoteValue.Quarter, 0), [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto);
+        Score score = new(new ScoreMetadata("T", ""), [new Instrument("I", [new Staff("S")])], [new Measure(1, new TimeSignature(4, 4))],
+            System.Collections.Immutable.ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0),
+                new StaffMeasure([new Voice(1, [first, second, new Rest(new EventId(Guid.NewGuid()), new Fraction(1, 2), new Duration(NoteValue.Half, 0))])])),
+            [new ArticulationAttachment(first.Id, ArticulationKind.Staccato), new ArticulationAttachment(second.Id, ArticulationKind.Tenuto),
+                new DynamicAttachment(first.Id, DynamicLevel.P), new ArticulationAttachment(first.Id, ArticulationKind.Fermata)]);
+
+        Interpretation result = Interpreter.Interpret(score);
+
+        Assert.Equal(new Fraction(1, 8), result.Notes[0].SoundingLength); // staccato: half of the notated length
+        Assert.Equal(new Fraction(1, 4), result.Notes[1].SoundingLength); // tenuto: the whole value
+        Assert.Equal([49, 49], result.Notes.Select(n => n.Velocity));
+    }
+}

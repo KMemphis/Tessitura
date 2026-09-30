@@ -242,11 +242,75 @@ public sealed record Note(Pitch Pitch, bool TiedToNext = false);
 /// <param name="Instruments">The instruments and their staves.</param>
 /// <param name="Measures">The global measures.</param>
 /// <param name="Content">The content of each staff and measure.</param>
+/// <param name="Attachments">Dynamics, articulations and other marks anchored to events; default means none.</param>
 public sealed record Score(
     ScoreMetadata Metadata,
     ImmutableArray<Instrument> Instruments,
     ImmutableArray<Measure> Measures,
-    ImmutableDictionary<StaffMeasureKey, StaffMeasure> Content);
+    ImmutableDictionary<StaffMeasureKey, StaffMeasure> Content,
+    ImmutableArray<Attachment> Attachments = default)
+{
+    /// <summary>Gets the attachments, empty when none were given.</summary>
+    public ImmutableArray<Attachment> AttachmentList => Attachments.IsDefault ? ImmutableArray<Attachment>.Empty : Attachments;
+}
+
+/// <summary>Names a dynamic level, from very soft to very loud.</summary>
+public enum DynamicLevel
+{
+    /// <summary>Pianississimo.</summary>
+    Ppp,
+    /// <summary>Pianissimo.</summary>
+    Pp,
+    /// <summary>Piano.</summary>
+    P,
+    /// <summary>Mezzo piano.</summary>
+    Mp,
+    /// <summary>Mezzo forte.</summary>
+    Mf,
+    /// <summary>Forte.</summary>
+    F,
+    /// <summary>Fortissimo.</summary>
+    Ff,
+    /// <summary>Fortississimo.</summary>
+    Fff,
+}
+
+/// <summary>Names an articulation or ornament attached to a note or chord.</summary>
+public enum ArticulationKind
+{
+    /// <summary>Short and detached.</summary>
+    Staccato,
+    /// <summary>Very short and detached.</summary>
+    Staccatissimo,
+    /// <summary>Held for its full value.</summary>
+    Tenuto,
+    /// <summary>Emphasized.</summary>
+    Accent,
+    /// <summary>Strongly emphasized.</summary>
+    Marcato,
+    /// <summary>Held longer than written.</summary>
+    Fermata,
+    /// <summary>Rapid alternation with the note above.</summary>
+    Trill,
+    /// <summary>Quick alternation with the note above and back.</summary>
+    Mordent,
+    /// <summary>Upper neighbour, note, lower neighbour, note.</summary>
+    Turn,
+}
+
+/// <summary>A mark anchored to one event by its stable identifier.</summary>
+/// <param name="Target">The event that carries the mark.</param>
+public abstract record Attachment(EventId Target);
+
+/// <summary>An articulation or ornament on an event.</summary>
+/// <param name="Target">The articulated event.</param>
+/// <param name="Kind">The articulation.</param>
+public sealed record ArticulationAttachment(EventId Target, ArticulationKind Kind) : Attachment(Target);
+
+/// <summary>A dynamic level that starts at an event.</summary>
+/// <param name="Target">The event where the level begins.</param>
+/// <param name="Level">The level.</param>
+public sealed record DynamicAttachment(EventId Target, DynamicLevel Level) : Attachment(Target);
 
 /// <summary>Checks basic score invariants.</summary>
 public static class ScoreValidator

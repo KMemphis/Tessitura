@@ -145,6 +145,20 @@ public sealed class ScoreInputController
             () => MoveCursorStaff(1)));
         actions.Add(new ActionDefinition("score.cursor.start", "Cursor al inicio de la partitura", "Ctrl+Home",
             MoveCursorToStart));
+        (ArticulationKind Kind, string Name, string Shortcut)[] marks =
+        [
+            (ArticulationKind.Staccato, "staccato", "Alt+S"), (ArticulationKind.Staccatissimo, "staccatissimo", "Alt+Shift+S"),
+            (ArticulationKind.Tenuto, "tenuto", "Alt+T"), (ArticulationKind.Accent, "acento", "Alt+A"),
+            (ArticulationKind.Marcato, "marcato", "Alt+M"), (ArticulationKind.Fermata, "calderón", "Alt+F"),
+            (ArticulationKind.Trill, "trino", "Alt+R"), (ArticulationKind.Mordent, "mordente", "Alt+Shift+M"),
+            (ArticulationKind.Turn, "grupeto", "Alt+G"),
+        ];
+        foreach ((ArticulationKind kind, string name, string shortcut) in marks)
+        {
+            actions.Add(new ActionDefinition($"articulation.{kind.ToString().ToLowerInvariant()}", $"Alternar {name}", shortcut,
+                () => ToggleSelectedArticulation(kind)));
+        }
+
         actions.Add(new ActionDefinition("edit.copy", "Copiar", "Ctrl+C", () => CopySelection()));
         actions.Add(new ActionDefinition("edit.paste", "Pegar", "Ctrl+V", () => PasteClipboard()));
         actions.Add(new ActionDefinition("score.selection-mode", "Modo de selección", "Esc", ExitNoteEntry));
@@ -473,6 +487,12 @@ public sealed class ScoreInputController
         NotifyStateChanged();
         return true;
     }
+
+    /// <summary>Adds an articulation to the selected event, or removes it if already present.</summary>
+    /// <param name="kind">The articulation or ornament.</param>
+    /// <returns>Whether a single event was selected.</returns>
+    public bool ToggleSelectedArticulation(ArticulationKind kind) =>
+        ApplySelectedEvent(properties => new ToggleArticulationCommand(properties.EventId, kind));
 
     /// <summary>Changes the initial clef on the selected event's staff.</summary>
     /// <param name="clef">The new staff clef.</param>

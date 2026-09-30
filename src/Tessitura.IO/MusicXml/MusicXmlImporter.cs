@@ -82,12 +82,15 @@ public static class MusicXmlImporter
 
     private sealed record RawNote(
         int Measure, int Staff, string Voice, Fraction Onset, Fraction Duration, Duration? Notated,
-        bool IsRest, bool IsChordMember, Pitch? Pitch, bool TieStart);
+        bool IsRest, bool IsChordMember, Pitch? Pitch, bool TieStart,
+        ImmutableArray<ArticulationKind> Marks = default, DynamicLevel? Dynamic = null);
 
     private sealed class Importer
     {
         private readonly List<MusicXmlImportWarning> _warnings = [];
         private readonly HashSet<string> _seenOnce = [];
+        private readonly List<Attachment> _attachments = [];
+        private DynamicLevel? _pendingDynamic;
 
         public MusicXmlImportResult Run(XDocument document)
         {
@@ -188,6 +191,11 @@ public static class MusicXmlImporter
                 staffOffset += part.StaffCount;
             }
 
+            if (_attachments.Count > 0)
+            {
+                score = score with { Attachments = [.. _attachments] };
+            }
+
             return new MusicXmlImportResult(score, [.. _warnings]);
         }
 
@@ -247,14 +255,32 @@ public static class MusicXmlImporter
                     continue;
                 }
 
+                EventId eventId = new(Guid.NewGuid());
                 if (note.IsRest)
                 {
-                    list.Add(new Rest(new EventId(Guid.NewGuid()), note.Onset, notated));
+                    list.Add(new Rest(eventId, note.Onset, notated));
                 }
                 else if (note.Pitch is Pitch pitch)
                 {
-                    list.Add(new Chord(new EventId(Guid.NewGuid()), note.Onset, notated,
+                    list.Add(new Chord(eventId, note.Onset, notated,
                         [new Note(pitch, note.TieStart)], StemDirection.Auto));
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (!note.Marks.IsDefaultOrEmpty)
+                {
+                    foreach (ArticulationKind kind in note.Marks)
+                    {
+                        _attachments.Add(new ArticulationAttachment(eventId, kind));
+                    }
+                }
+
+                if (note.Dynamic is DynamicLevel level)
+                {
+                    _attachments.Add(new DynamicAttachment(eventId, level));
                 }
 
                 ends[key] = absolute + notated.Length;
@@ -321,6 +347,7 @@ public static class MusicXmlImporter
                 Fraction cursor = Fraction.Zero;
                 Fraction lastOnset = Fraction.Zero;
                 string where = $"{id}, measure {measureIndex + 1}";
+                _pendingDynamic = null;
                 foreach (XElement element in measure.Elements())
                 {
                     switch (element.Name.LocalName)
@@ -333,6 +360,15 @@ public static class MusicXmlImporter
                             break;
                         case "forward":
                             cursor += new Fraction(Math.Max(0, ReadLong(element, "duration")), Math.Max(1, divisions) * 4L);
+                            break;
+                        case "direction":
+                            if (element.Elements("direction-type").Elements("dynamics").Elements().FirstOrDefault() is { } dynamicElement &&
+                                Enum.TryParse(dynamicElement.Name.LocalName, ignoreCase: true, out DynamicLevel level) &&
+                                Enum.IsDefined(level))
+                            {
+                                _pendingDynamic = level;
+                            }
+
                             break;
                         case "note":
                             ReadNote(element, data, measureIndex, Math.Max(1, divisions), ref cursor, ref lastOnset, where);
@@ -523,8 +559,15 @@ public static class MusicXmlImporter
             bool tieStart = note.Elements().Any(e => e.Name.LocalName == "tie" && e.Attribute("type")?.Value == "start") ||
                 note.Elements().Where(e => e.Name.LocalName == "notations").Elements()
                     .Any(e => e.Name.LocalName == "tied" && e.Attribute("type")?.Value == "start");
+            ImmutableArray<ArticulationKind> marks = isChord ? default : ReadMarks(note);
+            DynamicLevel? dynamic = isChord ? null : _pendingDynamic;
+            if (!isChord)
+            {
+                _pendingDynamic = null;
+            }
+
             data.Notes.Add(new RawNote(measureIndex, staff, voice, onset,
-                duration, ReadNotated(note), isRest, isChord, pitch, tieStart));
+                duration, ReadNotated(note), isRest, isChord, pitch, tieStart, marks, dynamic));
         }
 
         private Pitch? ReadPitch(XElement note, string where)
@@ -558,6 +601,45 @@ public static class MusicXmlImporter
             }
 
             return new Pitch(step, alter, octave);
+        }
+
+        private static ImmutableArray<ArticulationKind> ReadMarks(XElement note)
+        {
+            ImmutableArray<ArticulationKind>.Builder marks = ImmutableArray.CreateBuilder<ArticulationKind>();
+            foreach (XElement notations in note.Elements("notations"))
+            {
+                foreach (XElement child in notations.Elements())
+                {
+                    if (child.Name.LocalName == "fermata")
+                    {
+                        marks.Add(ArticulationKind.Fermata);
+                    }
+                    else if (child.Name.LocalName is "articulations" or "ornaments")
+                    {
+                        foreach (XElement item in child.Elements())
+                        {
+                            ArticulationKind? kind = item.Name.LocalName switch
+                            {
+                                "staccato" => ArticulationKind.Staccato,
+                                "staccatissimo" => ArticulationKind.Staccatissimo,
+                                "tenuto" => ArticulationKind.Tenuto,
+                                "accent" => ArticulationKind.Accent,
+                                "strong-accent" => ArticulationKind.Marcato,
+                                "trill-mark" => ArticulationKind.Trill,
+                                "mordent" or "inverted-mordent" => ArticulationKind.Mordent,
+                                "turn" => ArticulationKind.Turn,
+                                _ => null,
+                            };
+                            if (kind is ArticulationKind value && !marks.Contains(value))
+                            {
+                                marks.Add(value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return marks.ToImmutable();
         }
 
         private static Duration? ReadNotated(XElement note)
