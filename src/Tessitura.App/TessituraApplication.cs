@@ -22,6 +22,7 @@ public sealed class TessituraApplication : Application
                 Path.Combine(assets, "smufl_glyph_names.json"));
             ScoreInputController scoreInput = new(CreateInitialScore());
             ScoreCanvas canvas = new() { ScoreInputController = scoreInput };
+            ScoreWindowShell shell = new(canvas, scoreInput);
             ScoreUpdateCoordinator updates = new(scoreInput, metadata,
                 Path.Combine(assets, "Bravura.otf"),
                 postToUi: action => Dispatcher.UIThread.Post(action));
@@ -40,12 +41,15 @@ public sealed class TessituraApplication : Application
                     "view.fit-page", "Ajustar página", "Ctrl+0", canvas.FitPage),
             ];
             actionDefinitions.AddRange(scoreInput.CreateActions());
+            actionDefinitions.AddRange(shell.CreateActions());
             ActionRegistry actions = ActionRegistry.LoadOrCreate(actionDefinitions, settingsPath);
             canvas.AttachActionRegistry(actions);
+            shell.AttachActionRegistry(actions);
             desktop.Exit += (_, _) =>
             {
                 updates.Dispose();
                 canvas.DisposePresentation();
+                shell.Dispose();
             };
             Window mainWindow = new()
             {
@@ -54,7 +58,7 @@ public sealed class TessituraApplication : Application
                 Height = 800,
                 MinWidth = 600,
                 MinHeight = 500,
-                Content = canvas,
+                Content = shell,
             };
             mainWindow.Opened += (_, _) => canvas.Focus();
             desktop.MainWindow = mainWindow;

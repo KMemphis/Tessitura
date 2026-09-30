@@ -31,6 +31,7 @@ public sealed class ScoreCanvas : Control
     private double _displayPageStaffSpace = 12;
     private Point? _dragPointer;
     private bool _userAdjusted;
+    private SKColor _workspaceColor = new(47, 52, 61);
 
     /// <summary>Creates a canvas that initially fits the page in its view.</summary>
     public ScoreCanvas(MusicPreviewRenderer? musicPreview = null)
@@ -54,6 +55,22 @@ public sealed class ScoreCanvas : Control
 
     /// <summary>Gets the page offset in view coordinates.</summary>
     public Vector PanOffset { get; private set; }
+
+    /// <summary>Gets or sets the workspace color behind the white score page.</summary>
+    public SKColor WorkspaceColor
+    {
+        get => _workspaceColor;
+        set
+        {
+            if (_workspaceColor == value)
+            {
+                return;
+            }
+
+            _workspaceColor = value;
+            InvalidateVisual();
+        }
+    }
 
     /// <summary>Gets or sets the musical input controller shown on this canvas.</summary>
     public ScoreInputController? ScoreInputController
@@ -213,7 +230,7 @@ public sealed class ScoreCanvas : Control
     public override void Render(DrawingContext context)
     {
         _presentation?.MarkSceneBuilt();
-        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset,
+        context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _workspaceColor,
             _compositionVisual is null ? _musicPreview : null,
             _compositionVisual is null ? _presentation : null));
         if (_pageSpatialIndex is not null && _scoreInputController is { CurrentSelection.Items.IsDefaultOrEmpty: false } selected)
@@ -415,6 +432,7 @@ public sealed class ScoreCanvas : Control
         Rect bounds,
         double zoom,
         Vector panOffset,
+        SKColor workspaceColor,
         MusicPreviewRenderer? musicPreview,
         ScorePagePresentation? presentation) : ICustomDrawOperation
     {
@@ -432,7 +450,7 @@ public sealed class ScoreCanvas : Control
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
             PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X,
-                panOffset.Y, presentation is null ? musicPreview : null);
+                panOffset.Y, presentation is null ? musicPreview : null, workspaceColor);
             if (presentation is not null)
             {
                 canvas.Save();

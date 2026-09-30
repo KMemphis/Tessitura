@@ -13,9 +13,10 @@ public static class PagePreviewRenderer
         double zoom,
         double panX,
         double panY,
-        MusicPreviewRenderer? music = null)
+        MusicPreviewRenderer? music = null,
+        SKColor? workspaceColor = null)
     {
-        using SKPaint background = new() { Color = new SKColor(47, 52, 61) };
+        using SKPaint background = new() { Color = workspaceColor ?? new SKColor(47, 52, 61) };
         using SKPaint shadow = new() { Color = new SKColor(0, 0, 0, 75), IsAntialias = true };
         using SKPaint page = new() { Color = SKColors.White, IsAntialias = true };
 
