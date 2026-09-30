@@ -14,3 +14,10 @@
 - La ejecución remota [CI #36648703193](https://github.com/KMemphis/Tessitura/actions/runs/36648703193) terminó en verde en los tres sistemas.
 - Pendiente: F0.3, prueba automática de las referencias de arquitectura.
 
+## 2026-09-29 · F0.3 Prueba de arquitectura
+
+- Se añadió una prueba que inspecciona las referencias compiladas y declaradas de Core, Smufl y Engraving para impedir dependencias de Avalonia y SkiaSharp.
+- La prueba detectó una referencia temporal a SkiaSharp añadida a Core; se retiró antes del build final.
+- `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 6 pruebas, sin fallos ni omisiones.
+- Pendiente: F0.4, aritmética racional con `Fraction`.
+
