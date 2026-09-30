@@ -29,3 +29,11 @@
 - `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 13 pruebas, sin fallos ni omisiones.
 - Pendiente: F0.5, alturas escritas e intervalos.
 
+## 2026-09-29 · F0.5 Pitch e Interval
+
+- Se añadieron alturas escritas (`Step`, `Alter`, `Octave`) e intervalos firmados por pasos diatónicos y semitonos. `MidiNumber` se calcula a partir de la escritura.
+- La transposición calcula la nueva letra y octava por separado de la altura sonora, preservando diferencias enarmónicas.
+- Las pruebas cubren Do4 + tercera mayor = Mi4, Si♯3 y Do4 con el mismo número MIDI pero distinta escritura, cruce de octava y transposición inversa con 500 casos de propiedades.
+- `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 17 pruebas, sin fallos ni omisiones.
+- Pendiente: F0.6, duración de figuras con puntillos.
+
