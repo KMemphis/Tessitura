@@ -5,6 +5,7 @@ using Tessitura.Core;
 using Tessitura.Engraving;
 using Tessitura.IO;
 using Tessitura.IO.Tess;
+using Tessitura.Rendering;
 using Tessitura.Smufl;
 
 namespace Tessitura.App;
@@ -19,6 +20,8 @@ internal sealed class EditorSession : IDisposable
     private readonly ScoreCanvas _canvas;
     private readonly ScoreUpdateCoordinator _updates;
     private readonly RecoveryAutosave _autosave;
+    private readonly SmuflMetadata _metadata;
+    private readonly string _assetsPath;
     private string? _path;
 
     public EditorSession(Window window, SmuflMetadata metadata, string assetsPath,
@@ -26,6 +29,8 @@ internal sealed class EditorSession : IDisposable
         Action closeToStart)
     {
         _window = window;
+        _metadata = metadata;
+        _assetsPath = assetsPath;
         _recents = recents;
         _path = path;
         _style = Style.CreateDefault(metadata);
@@ -43,6 +48,7 @@ internal sealed class EditorSession : IDisposable
             new("view.fit-page", "Ajustar página", "Ctrl+0", _canvas.FitPage),
             new("file.save", "Guardar", "Ctrl+S", () => _ = SaveAsync(saveAs: false)),
             new("file.save-as", "Guardar como…", "Ctrl+Shift+S", () => _ = SaveAsync(saveAs: true)),
+            new("file.export-pdf", "Exportar a PDF…", "Ctrl+E", () => _ = ExportPdfAsync()),
             new("file.close", "Cerrar y volver al inicio", "Ctrl+W", closeToStart),
         ];
         definitions.AddRange(_input.CreateActions());
@@ -66,6 +72,33 @@ internal sealed class EditorSession : IDisposable
         _updates.Dispose();
         _canvas.DisposePresentation();
         Shell.Dispose();
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        IStorageFile? file = await _window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            SuggestedFileName = _input.CurrentScore.Metadata.Title,
+            DefaultExtension = "pdf",
+            FileTypeChoices = [new FilePickerFileType("PDF") { Patterns = ["*.pdf"] }],
+        });
+        if (file?.TryGetLocalPath() is not string target)
+        {
+            return;
+        }
+
+        try
+        {
+            Score score = _input.CurrentScore;
+            string musicFont = Path.Combine(_assetsPath, "Bravura.otf");
+            string textFont = Path.Combine(_assetsPath, "NotoSerif[wdth,wght].ttf");
+            await Task.Run(() => ScorePdfExport.Export(target, score, _style, _metadata, musicFont,
+                File.Exists(textFont) ? textFont : null));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _window.Title = $"Tessitura — no se pudo exportar: {exception.Message}";
+        }
     }
 
     private async Task SaveAsync(bool saveAs)

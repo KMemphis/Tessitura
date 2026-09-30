@@ -139,6 +139,12 @@ public sealed class ScoreInputController
     {
         ImmutableArray<ActionDefinition>.Builder actions = ImmutableArray.CreateBuilder<ActionDefinition>();
         actions.Add(new ActionDefinition("score.note-entry", "Modo de entrada de notas", "N", EnterNoteEntry));
+        actions.Add(new ActionDefinition("score.cursor.staff-up", "Cursor al pentagrama superior", "Alt+Up",
+            () => MoveCursorStaff(-1)));
+        actions.Add(new ActionDefinition("score.cursor.staff-down", "Cursor al pentagrama inferior", "Alt+Down",
+            () => MoveCursorStaff(1)));
+        actions.Add(new ActionDefinition("score.cursor.start", "Cursor al inicio de la partitura", "Ctrl+Home",
+            MoveCursorToStart));
         actions.Add(new ActionDefinition("edit.copy", "Copiar", "Ctrl+C", () => CopySelection()));
         actions.Add(new ActionDefinition("edit.paste", "Pegar", "Ctrl+V", () => PasteClipboard()));
         actions.Add(new ActionDefinition("score.selection-mode", "Modo de selección", "Esc", ExitNoteEntry));
@@ -315,6 +321,34 @@ public sealed class ScoreInputController
     /// <returns>Whether a selected event was changed.</returns>
     public bool ChangeSelectedDotCount(int dotCount) =>
         ApplySelectedEvent(properties => new ChangeDotCountCommand(properties.EventId, dotCount));
+
+    /// <summary>Moves the input cursor to another staff, keeping its position and voice.</summary>
+    /// <param name="delta">Negative moves up, positive moves down.</param>
+    /// <returns>Whether the cursor changed staff.</returns>
+    public bool MoveCursorStaff(int delta)
+    {
+        int staffCount = CountStaves(CurrentScore);
+        int target = Math.Clamp(Cursor.StaffIndex + delta, 0, staffCount - 1);
+        if (target == Cursor.StaffIndex ||
+            !CurrentScore.Content.TryGetValue(new StaffMeasureKey(target, 0), out StaffMeasure? staffMeasure) ||
+            !staffMeasure.Voices.Any(voice => voice.Number == Cursor.VoiceNumber))
+        {
+            return false;
+        }
+
+        Cursor = Cursor with { StaffIndex = target };
+        _lastPitch = null;
+        NotifyStateChanged();
+        return true;
+    }
+
+    /// <summary>Moves the input cursor to the beginning of the score on its staff.</summary>
+    public void MoveCursorToStart()
+    {
+        Cursor = Cursor with { Position = Fraction.Zero };
+        _lastPitch = null;
+        NotifyStateChanged();
+    }
 
     /// <summary>Gets whether the internal clipboard holds a copied fragment.</summary>
     public bool CanPaste => _clipboard is not null;
@@ -514,11 +548,28 @@ public sealed class ScoreInputController
         return alteration;
     }
 
+    private Clef GetCursorClef()
+    {
+        int remaining = Cursor.StaffIndex;
+        foreach (Instrument instrument in CurrentScore.Instruments)
+        {
+            if (remaining < instrument.Staves.Length)
+            {
+                return instrument.Staves[remaining].InitialClef;
+            }
+
+            remaining -= instrument.Staves.Length;
+        }
+
+        return Clef.Treble;
+    }
+
     private Pitch NearestPitch(Step step)
     {
         if (_lastPitch is not Pitch previous)
         {
-            return new Pitch(step, 0, 4);
+            // Start near the middle of the staff's range: bass-clef staves sit an octave lower.
+            return new Pitch(step, 0, GetCursorClef() == Clef.Bass ? 3 : 4);
         }
 
         int previousDiatonicIndex = checked(previous.Octave * 7 + (int)previous.Step);
