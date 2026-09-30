@@ -42,7 +42,15 @@ public sealed class Sequencer : IAudioSource
     public long PositionSamples => Volatile.Read(ref _position);
 
     /// <summary>Gets whether the transport is playing.</summary>
-    public bool IsPlaying => Volatile.Read(ref _playing);
+    public bool IsPlaying
+    {
+        get
+        {
+            // A control request not yet picked up by the audio thread already counts.
+            int request = Volatile.Read(ref _pendingTransport);
+            return request == Play || (request != Pause && Volatile.Read(ref _playing));
+        }
+    }
 
     /// <summary>Gets the length of the loaded sequence in samples.</summary>
     public long LengthSamples => Volatile.Read(ref _data).LengthSamples;

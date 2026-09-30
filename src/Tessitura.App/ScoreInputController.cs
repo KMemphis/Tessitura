@@ -342,6 +342,22 @@ public sealed class ScoreInputController
         return true;
     }
 
+    /// <summary>Places the cursor at a position without touching the history (used by the playback head).</summary>
+    /// <param name="position">The absolute position in whole-note units, not negative.</param>
+    public void SetCursorPosition(Fraction position)
+    {
+        if (position < Fraction.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(position));
+        }
+
+        if (position != Cursor.Position)
+        {
+            Cursor = Cursor with { Position = position };
+            NotifyStateChanged();
+        }
+    }
+
     /// <summary>Moves the input cursor to the beginning of the score on its staff.</summary>
     public void MoveCursorToStart()
     {

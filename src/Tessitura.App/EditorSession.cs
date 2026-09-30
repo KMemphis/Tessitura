@@ -22,6 +22,8 @@ internal sealed class EditorSession : IDisposable
     private readonly RecoveryAutosave _autosave;
     private readonly SmuflMetadata _metadata;
     private readonly string _assetsPath;
+    private readonly PlaybackController _playback;
+    private readonly Avalonia.Threading.DispatcherTimer _playhead;
     private string? _path;
 
     public EditorSession(Window window, SmuflMetadata metadata, string assetsPath,
@@ -51,6 +53,20 @@ internal sealed class EditorSession : IDisposable
             new("file.export-pdf", "Exportar a PDF…", "Ctrl+E", () => _ = ExportPdfAsync()),
             new("file.close", "Cerrar y volver al inicio", "Ctrl+W", closeToStart),
         ];
+        string soundFont = Path.Combine(assetsPath, "..", "soundfonts", "default.sf2");
+        _playback = new PlaybackController(_input, rate =>
+        {
+            if (!File.Exists(soundFont))
+            {
+                throw new FileNotFoundException("No SoundFont is installed (assets/soundfonts/default.sf2).", soundFont);
+            }
+
+            return new MeltySynth.Synthesizer(new MeltySynth.SoundFont(soundFont), new MeltySynth.SynthesizerSettings(rate));
+        }, () => new Tessitura.Playback.Audio.MiniAudioOutput());
+        _playhead = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _playhead.Tick += (_, _) => _playback.Tick();
+        _playhead.Start();
+        definitions.AddRange(_playback.CreateActions().Select(a => a with { Execute = () => RunPlayback(a.Execute) }));
         definitions.AddRange(_input.CreateActions());
         definitions.AddRange(Shell.CreateActions());
         ActionRegistry actions = ActionRegistry.LoadOrCreate(definitions, settingsPath);
@@ -64,11 +80,25 @@ internal sealed class EditorSession : IDisposable
 
     public ScoreWindowShell Shell { get; }
 
+    private void RunPlayback(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            _window.Title = $"Tessitura — no se puede reproducir: {exception.Message}";
+        }
+    }
+
     public void Focus() => _canvas.Focus();
 
     public void Dispose()
     {
         // A clean close leaves nothing to recover; only a crash keeps the recovery copy.
+        _playhead.Stop();
+        _playback.Dispose();
         _autosave.Dispose();
         _autosave.Discard();
         _updates.Dispose();

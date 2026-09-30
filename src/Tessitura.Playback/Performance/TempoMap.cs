@@ -64,6 +64,28 @@ public sealed class TempoMap
         return seconds + Quarters(position - start) * 60.0 / bpm;
     }
 
+    /// <summary>Converts elapsed seconds to a score position, rounded to 1/4096 of a whole note.</summary>
+    /// <param name="seconds">The elapsed time, not negative.</param>
+    /// <returns>The absolute position in whole-note units.</returns>
+    public Fraction PositionAt(double seconds)
+    {
+        if (!double.IsFinite(seconds) || seconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(seconds));
+        }
+
+        int index = 0;
+        for (int i = 1; i < _segments.Length && _segments[i].SecondsAtStart <= seconds; i++)
+        {
+            index = i;
+        }
+
+        (Fraction start, double bpm, double at) = _segments[index];
+        double quarters = (seconds - at) * bpm / 60.0;
+        long units = (long)Math.Round(quarters * 1024); // 1/4096 whole = 1/1024 quarter
+        return start + new Fraction(units, 4096);
+    }
+
     private int SegmentAt(Fraction position)
     {
         int index = 0;
