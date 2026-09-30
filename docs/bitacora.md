@@ -216,3 +216,10 @@
 - Una prueba verifica activación, desactivación, preservación al cambiar altura y el ciclo de deshacer/rehacer. La propiedad FsCheck de historial ahora genera también cambios de ligadura y deshace la secuencia completa.
 - `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 133 pruebas, sin fallos ni omisiones.
 - Siguiente tarea: F2.3, notación rítmica automática.
+
+## 2026-09-30 · F2.3 Notación rítmica automática
+
+- Cada comando normaliza la voz afectada sobre la línea temporal global. Los eventos posteriores se desplazan si el anterior se alarga, los silencios se reducen o insertan para completar huecos y cada compás queda cubierto exactamente con `Fraction`.
+- Las duraciones que cruzan una barra se dividen en segmentos con ligadura entre sus notas. Si el último compás no alcanza, se amplía la partitura y se crean compases de silencios para los otros pentagramas. Los silencios se reescriben en valores que respetan los pulsos; 6/8 usa pulsos de negra con puntillo.
+- Cinco pruebas cubren acortamiento, desplazamiento de notas, cruce de barra, ampliación multipentagrama y silencios en 6/8. La prueba FsCheck verifica la invariante de cada voz después de cada comando generado. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 138 pruebas, sin fallos ni omisiones.
+- Siguiente tarea: F2.4, cursor y modo de entrada.

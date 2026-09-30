@@ -157,7 +157,8 @@ internal static class ScoreCommandEditor
         ImmutableArray<MusicEvent> updatedEvents = voice.Events.SetItem(eventIndex, updatedEvent);
         ImmutableArray<Voice> updatedVoices = staffMeasure.Voices.SetItem(voiceIndex, voice with { Events = updatedEvents });
         StaffMeasure updatedMeasure = staffMeasure with { Voices = updatedVoices };
-        return score with { Content = score.Content.SetItem(key, updatedMeasure) };
+        Score updatedScore = score with { Content = score.Content.SetItem(key, updatedMeasure) };
+        return RhythmicScoreNormalizer.NormalizeVoice(updatedScore, context);
     }
 
     public static Score UpdateNote(

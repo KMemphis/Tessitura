@@ -110,6 +110,146 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void ShorteningANoteFillsTheNewGapWithAnExactRest()
+    {
+        EventId secondEventId = new(Guid.Parse("10000000-0000-0000-0000-000000000002"));
+        EventId restEventId = new(Guid.Parse("10000000-0000-0000-0000-000000000003"));
+        Score score = CreateScore(
+        [
+            new Chord(MainEventId, Fraction.Zero, new Duration(NoteValue.Quarter, 0),
+                [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto),
+            new Chord(secondEventId, new Fraction(1, 4), new Duration(NoteValue.Quarter, 0),
+                [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto),
+            new Rest(restEventId, new Fraction(1, 2), new Duration(NoteValue.Half, 0)),
+        ]);
+
+        Score edited = new ChangeDurationCommand(
+            MainEventId,
+            new Duration(NoteValue.Eighth, 0)).Apply(score, Context);
+
+        ImmutableArray<MusicEvent> events = GetVoice(edited, 0).Events;
+        Assert.Equal(5, events.Length);
+        Assert.Equal(new Duration(NoteValue.Eighth, 0), events[0].Duration);
+        Rest insertedRest = Assert.IsType<Rest>(events[1]);
+        Assert.Equal(new Fraction(1, 8), insertedRest.Onset);
+        Assert.Equal(new Duration(NoteValue.Eighth, 0), insertedRest.Duration);
+        Assert.Equal(new Fraction(1, 4), events[2].Onset);
+        Assert.IsType<Chord>(events[2]);
+        AssertVoiceValid(edited, 0);
+    }
+
+    [Fact]
+    public void ExtendingADurationShiftsFollowingNotesAndConsumesOverlappingRests()
+    {
+        EventId secondEventId = new(Guid.Parse("15000000-0000-0000-0000-000000000001"));
+        EventId trailingRestId = new(Guid.Parse("15000000-0000-0000-0000-000000000002"));
+        Score score = CreateScore(
+        [
+            new Chord(MainEventId, Fraction.Zero, new Duration(NoteValue.Quarter, 0),
+                [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto),
+            new Chord(secondEventId, new Fraction(1, 4), new Duration(NoteValue.Quarter, 0),
+                [new Note(new Pitch(Step.D, 0, 4))], StemDirection.Auto),
+            new Rest(trailingRestId, new Fraction(1, 2), new Duration(NoteValue.Half, 0)),
+        ]);
+
+        Score edited = new ChangeDurationCommand(
+            MainEventId,
+            new Duration(NoteValue.Half, 0)).Apply(score, Context);
+
+        ImmutableArray<MusicEvent> events = GetVoice(edited, 0).Events;
+        Assert.Equal(new Duration(NoteValue.Half, 0), events[0].Duration);
+        Chord shiftedChord = Assert.IsType<Chord>(events[1]);
+        Assert.Equal(new Fraction(1, 2), shiftedChord.Onset);
+        Assert.Equal(new Fraction(3, 4), events[2].Onset);
+        Assert.Equal(new Duration(NoteValue.Quarter, 0), events[2].Duration);
+        Assert.IsType<Rest>(events[2]);
+        AssertVoiceValid(edited, 0);
+    }
+
+    [Fact]
+    public void ExtendingANoteAcrossABarlineSplitsItAndAddsATie()
+    {
+        EventId leadingRestId = new(Guid.Parse("20000000-0000-0000-0000-000000000001"));
+        EventId nextMeasureRestId = new(Guid.Parse("20000000-0000-0000-0000-000000000002"));
+        Score score = CreateScore(
+            [new Measure(1, new TimeSignature(4, 4)), new Measure(2, new TimeSignature(4, 4))],
+            [new Rest(leadingRestId, Fraction.Zero, new Duration(NoteValue.Half, 1)),
+             new Chord(MainEventId, new Fraction(3, 4), new Duration(NoteValue.Quarter, 0),
+                 [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto)],
+            [new Rest(nextMeasureRestId, Fraction.Zero, new Duration(NoteValue.Whole, 0))]);
+
+        Score edited = new ChangeDurationCommand(
+            MainEventId,
+            new Duration(NoteValue.Half, 0)).Apply(score, Context);
+
+        ImmutableArray<MusicEvent> firstMeasure = GetVoice(edited, 0).Events;
+        Chord firstFragment = Assert.IsType<Chord>(firstMeasure[^1]);
+        Assert.Equal(new Fraction(3, 4), firstFragment.Onset);
+        Assert.Equal(new Duration(NoteValue.Quarter, 0), firstFragment.Duration);
+        Assert.True(firstFragment.Notes[0].TiedToNext);
+
+        ImmutableArray<MusicEvent> secondMeasure = GetVoice(edited, 1).Events;
+        Chord continuation = Assert.IsType<Chord>(secondMeasure[0]);
+        Assert.Equal(Fraction.Zero, continuation.Onset);
+        Assert.Equal(new Duration(NoteValue.Quarter, 0), continuation.Duration);
+        Assert.Equal(firstFragment.Notes[0].Pitch, continuation.Notes[0].Pitch);
+        Assert.False(continuation.Notes[0].TiedToNext);
+        Assert.NotEqual(firstFragment.Id, continuation.Id);
+        AssertVoiceValid(edited, 0);
+        AssertVoiceValid(edited, 1);
+    }
+
+    [Fact]
+    public void ExtendingPastTheLastMeasureAddsMeasuresAndKeepsTheScoreValid()
+    {
+        Score score = CreateTwoStaffScore();
+
+        Score edited = new ChangeDurationCommand(
+            MainEventId,
+            new Duration(NoteValue.Whole, 2)).Apply(score, Context);
+
+        Assert.Equal(2, edited.Measures.Length);
+        Chord firstFragment = Assert.IsType<Chord>(GetVoice(edited, 0).Events[0]);
+        Chord continuation = Assert.IsType<Chord>(GetVoice(edited, 1).Events[0]);
+        Assert.Equal(new Duration(NoteValue.Whole, 0), firstFragment.Duration);
+        Assert.True(firstFragment.Notes[0].TiedToNext);
+        Assert.Equal(new Duration(NoteValue.Half, 1), continuation.Duration);
+        Assert.False(continuation.Notes[0].TiedToNext);
+        Assert.Equal(new Duration(NoteValue.Quarter, 0), GetVoice(edited, 1).Events[1].Duration);
+        Assert.IsType<Rest>(edited.Content[new StaffMeasureKey(1, 1)].Voices[0].Events[0]);
+        AssertScoreVoicesValid(edited);
+    }
+
+    [Fact]
+    public void RewritesCompoundMeterRestsAtTheDottedQuarterPulse()
+    {
+        EventId restEventId = new(Guid.Parse("30000000-0000-0000-0000-000000000001"));
+        Score score = CreateScore(
+        [
+            new Measure(1, new TimeSignature(6, 8)),
+        ],
+        [
+            new Chord(MainEventId, Fraction.Zero, new Duration(NoteValue.Quarter, 1),
+                [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto),
+            new Rest(restEventId, new Fraction(3, 8), new Duration(NoteValue.Quarter, 1)),
+        ]);
+
+        Score edited = new ChangeDurationCommand(
+            MainEventId,
+            new Duration(NoteValue.Quarter, 0)).Apply(score, Context);
+
+        ImmutableArray<MusicEvent> events = GetVoice(edited, 0).Events;
+        Assert.Equal(3, events.Length);
+        Assert.IsType<Chord>(events[0]);
+        Assert.Equal(new Fraction(1, 4), events[1].Onset);
+        Assert.Equal(new Duration(NoteValue.Eighth, 0), events[1].Duration);
+        Assert.IsType<Rest>(events[1]);
+        Assert.Equal(new Fraction(3, 8), events[2].Onset);
+        Assert.Equal(new Duration(NoteValue.Quarter, 1), events[2].Duration);
+        AssertVoiceValid(edited, 0);
+    }
+
+    [Fact]
     public void HistoryUndoAndRedoRestoreScoreAndSelectionSnapshots()
     {
         Score initial = CreateScore();
@@ -170,7 +310,7 @@ public sealed class EditingTests
         int fifth,
         int sixth)
     {
-        Score initial = CreateScore();
+        Score initial = CreateRhythmPropertyScore();
         History history = new(initial);
         int[] operations = [first, second, third, fourth, fifth, sixth];
         Score current = initial;
@@ -179,6 +319,7 @@ public sealed class EditingTests
         {
             IScoreCommand command = CreateCommand(operation, current);
             current = command.Apply(current, Context);
+            AssertScoreVoicesValid(current);
             history.Push(current, command.Description, Selection.Empty);
         }
 
@@ -215,9 +356,13 @@ public sealed class EditingTests
 
     private static Duration CreateDuration(int value)
     {
-        NoteValue noteValue = (NoteValue)(1 << (int)(Math.Abs((long)value) % 8));
-        int maximumDots = 62 - System.Numerics.BitOperations.Log2((uint)noteValue);
-        return new Duration(noteValue, (int)(Math.Abs((long)value) % Math.Min(maximumDots + 1, 4)));
+        NoteValue noteValue = Math.Abs((long)value % 3) switch
+        {
+            0 => NoteValue.Sixteenth,
+            1 => NoteValue.Eighth,
+            _ => NoteValue.Quarter,
+        };
+        return new Duration(noteValue, (int)(Math.Abs((long)value) % 3));
     }
 
     private static Score CreateScore() => CreateScoreWithNotes(new Note(new Pitch(Step.C, 0, 4)));
@@ -244,6 +389,82 @@ public sealed class EditingTests
             [new Instrument("Piano", [new Staff("Staff")])],
             [new Measure(1, new TimeSignature(4, 4))],
             ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty.Add(new StaffMeasureKey(0, 0), staffMeasure));
+    }
+
+    private static Score CreateScore(ImmutableArray<Measure> measures, params ImmutableArray<MusicEvent>[] eventsByMeasure)
+    {
+        if (measures.Length != eventsByMeasure.Length)
+        {
+            throw new ArgumentException("Each measure needs one voice event list.", nameof(eventsByMeasure));
+        }
+
+        ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content =
+            ImmutableDictionary.CreateBuilder<StaffMeasureKey, StaffMeasure>();
+        for (int index = 0; index < measures.Length; index++)
+        {
+            content.Add(new StaffMeasureKey(0, index), new StaffMeasure([new Voice(1, eventsByMeasure[index])]));
+        }
+
+        return new Score(
+            new ScoreMetadata("Test", "Composer"),
+            [new Instrument("Piano", [new Staff("Staff")])],
+            measures,
+            content.ToImmutable());
+    }
+
+    private static Score CreateRhythmPropertyScore()
+    {
+        EventId firstRestId = new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
+        EventId secondRestId = new(Guid.Parse("40000000-0000-0000-0000-000000000002"));
+        EventId thirdRestId = new(Guid.Parse("40000000-0000-0000-0000-000000000003"));
+        EventId nextMeasureRestId = new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
+        return CreateScore(
+            [new Measure(1, new TimeSignature(4, 4)), new Measure(2, new TimeSignature(4, 4))],
+            [new Chord(MainEventId, Fraction.Zero, new Duration(NoteValue.Eighth, 0),
+                 [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto),
+             new Rest(firstRestId, new Fraction(1, 8), new Duration(NoteValue.Half, 0)),
+             new Rest(secondRestId, new Fraction(5, 8), new Duration(NoteValue.Quarter, 0)),
+             new Rest(thirdRestId, new Fraction(7, 8), new Duration(NoteValue.Eighth, 0))],
+            [new Rest(nextMeasureRestId, Fraction.Zero, new Duration(NoteValue.Whole, 0))]);
+    }
+
+    private static Score CreateTwoStaffScore()
+    {
+        ScoreMetadata metadata = new("Test", "Composer");
+        ImmutableArray<Instrument> instruments =
+        [new Instrument("Piano", [new Staff("Right hand"), new Staff("Left hand")])];
+        ImmutableArray<Measure> measures = [new Measure(1, new TimeSignature(4, 4))];
+        ImmutableArray<MusicEvent> rightEvents =
+        [new Chord(MainEventId, Fraction.Zero, new Duration(NoteValue.Whole, 0),
+            [new Note(new Pitch(Step.C, 0, 4))], StemDirection.Auto)];
+        ImmutableArray<MusicEvent> leftEvents =
+        [new Rest(new EventId(Guid.Parse("50000000-0000-0000-0000-000000000001")),
+            Fraction.Zero, new Duration(NoteValue.Whole, 0))];
+        ImmutableDictionary<StaffMeasureKey, StaffMeasure> content =
+            ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Empty
+                .Add(new StaffMeasureKey(0, 0), new StaffMeasure([new Voice(1, rightEvents)]))
+                .Add(new StaffMeasureKey(1, 0), new StaffMeasure([new Voice(1, leftEvents)]));
+
+        return new Score(metadata, instruments, measures, content);
+    }
+
+    private static Voice GetVoice(Score score, int measureIndex) =>
+        score.Content[new StaffMeasureKey(0, measureIndex)].Voices[0];
+
+    private static void AssertVoiceValid(Score score, int measureIndex)
+    {
+        Assert.True(ScoreValidator.IsMeasureValid(
+            score.Measures[measureIndex],
+            score.Content[new StaffMeasureKey(0, measureIndex)]));
+    }
+
+    private static void AssertScoreVoicesValid(Score score)
+    {
+        foreach (KeyValuePair<StaffMeasureKey, StaffMeasure> entry in score.Content)
+        {
+            Assert.InRange(entry.Key.MeasureIndex, 0, score.Measures.Length - 1);
+            Assert.True(ScoreValidator.IsMeasureValid(score.Measures[entry.Key.MeasureIndex], entry.Value));
+        }
     }
 
     private static MusicEvent GetEvent(Score score) =>
