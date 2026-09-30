@@ -309,3 +309,9 @@
 - `F2GateTests` recorre la puerta completa solo con atajos de teclado por el `ActionRegistry` (sin eventos de ratón): crea un coral SATB con la plantilla, escribe cuatro compases en cuatro pentagramas (`N`, `5`, letras, `Ctrl+Inicio`, `Alt+↓`), comprueba que cada compás es válido y que las notas coinciden, guarda `.tess`, lo reabre y obtiene una partitura idéntica (ids, posiciones `Fraction`, duraciones, alturas, claves), y exporta a PDF. Evidencia: `docs/capturas/f2-gate-coral-satb.pdf`, `.tess` y `.png` (primera página, convertida con `sips`).
 - Lo que la puerta no cubre y queda para el propietario: comprobar a mano la ventana real (selectores de archivo de guardar, abrir y exportar, y el aspecto de la paleta de comandos), y una pasada visual: los cuatro pentagramas del coral quedan muy juntos y las plicas de tenor y bajo se solapan; se abordará en F5.10 y con el espaciado vertical.
 - Deuda: sin acciones de cambio de voz ni de mover el cursor por eventos, ni selección por teclado (solo ratón para elegir destino de pegado fuera del modo de entrada); copiar y pegar no usa el portapapeles del sistema.
+
+## 2026-09-30 · Tema Fluent (aprobado por el propietario)
+
+- Se añadió la dependencia `Avalonia.Themes.Fluent` 12.1.3 (MIT, misma versión que Avalonia.Desktop) fijada en `Directory.Packages.props` y se carga `FluentTheme` en `TessituraApplication`. Los controles ya tienen estilo en claro y oscuro; el interruptor de tema del editor sigue funcionando y la pantalla de inicio sigue el tema del sistema (se quitaron sus colores fijos). Captura de la ventana de inicio: `docs/capturas/theme-fluent-start-window.png`.
+- Al cerrar una sesión de forma normal se borra la copia de recuperación del autoguardado; solo un cierre inesperado la conserva.
+- Pendiente: revisar el aspecto de la paleta de comandos y de los cuadros del asistente con el tema en la ventana real; el pulido general sigue en F5.10.

@@ -68,7 +68,9 @@ internal sealed class EditorSession : IDisposable
 
     public void Dispose()
     {
+        // A clean close leaves nothing to recover; only a crash keeps the recovery copy.
         _autosave.Dispose();
+        _autosave.Discard();
         _updates.Dispose();
         _canvas.DisposePresentation();
         Shell.Dispose();

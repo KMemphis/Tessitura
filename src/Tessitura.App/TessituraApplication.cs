@@ -23,6 +23,7 @@ public sealed class TessituraApplication : Application
     /// <inheritdoc />
     public override void OnFrameworkInitializationCompleted()
     {
+        Styles.Add(new Avalonia.Themes.Fluent.FluentTheme());
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _assets = Path.Combine(AppContext.BaseDirectory, "assets", "fonts");

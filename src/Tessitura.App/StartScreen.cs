@@ -56,7 +56,6 @@ public sealed class StartScreen : UserControl
     private void Rebuild()
     {
         Buttons.Clear();
-        Background = Brushes.White;
         Content = new ScrollViewer
         {
             Content = new StackPanel
@@ -160,9 +159,7 @@ public sealed class StartScreen : UserControl
     private Button ActionButton(string text, string actionId, double width)
     {
         Button button = new() { Content = text, Width = width, Margin = new Thickness(0, 0, 8, 8),
-            Padding = new Thickness(10, 8), HorizontalContentAlignment = HorizontalAlignment.Left,
-            Background = new SolidColorBrush(Color.Parse("#E8ECF2")), BorderBrush = new SolidColorBrush(Color.Parse("#B8C1CE")),
-            BorderThickness = new Thickness(1), Foreground = Brushes.Black };
+            Padding = new Thickness(10, 8), HorizontalContentAlignment = HorizontalAlignment.Left };
         button.Click += (_, _) => _actions?.TryExecute(actionId);
         Buttons[actionId] = button;
         return button;
