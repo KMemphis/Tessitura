@@ -55,6 +55,14 @@ jobs:
           name: first-page-text-${{ matrix.os }}
           path: captures/f1.13-first-page-candidate.png
           if-no-files-found: error
+      - name: Upload PDF export sample
+        uses: actions/upload-artifact@v6
+        with:
+          name: pdf-export-${{ matrix.os }}
+          path: |
+            captures/f1.14-multipage-sample.pdf
+            captures/f1.14-screen-page.png
+          if-no-files-found: error
       - name: Upload reference differences
         if: failure()
         uses: actions/upload-artifact@v6

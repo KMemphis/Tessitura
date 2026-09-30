@@ -174,3 +174,10 @@
 - El propietario revisó las candidatas de primera página para macOS, Windows y Ubuntu e indicó continuar el plan hasta F5; se adoptaron como referencias aprobadas. Una prueba compara cada ejecución con la imagen de su plataforma y adjunta la candidata a CI. Se toleran hasta 500 píxeles distintos con diferencia máxima de 16 niveles por canal para cubrir variaciones de antialiasing entre máquinas.
 - Las pruebas cubren el centrado con acentos, las posiciones de los números de compás, la omisión de texto vacío y las tres referencias. `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 109 pruebas sin fallos ni omisiones. [CI #36663977981](https://github.com/KMemphis/Tessitura/actions/runs/36663977981) pasó en Windows, macOS y Ubuntu.
 - No quedan pendientes de F1.13. Siguiente tarea: F1.14, exportación PDF.
+
+## 2026-09-29 · F1.14 Exportación PDF
+
+- Se añadió `PdfExporter` en Rendering con `SKDocument.CreatePdf`. Conserva los límites de cada página en puntos según el tamaño de espacio de pentagrama elegido, exporta todas las páginas de la lista y valida páginas vacías, dimensiones inválidas y escala no finita. La salida de prueba mantiene música y texto como vectores; Noto Serif y Bravura aparecen como subconjuntos Type 3 con sus programas de glifos `CharProcs` incrustados.
+- Dos pruebas nuevas verifican PDF multipágina, tamaño individual de página, fuentes incrustadas y rechazo de opciones inválidas. `pdfinfo` confirma dos páginas (595 × 840 pt y 350 × 525 pt). Rendericé la primera a 148,114 dpi y la comparé visualmente con la salida Skia de 1224 × 1728 píxeles; el texto, glifo y plica coinciden. Preview, Safari y Chrome Guest abrieron el PDF y expusieron el texto de ambas páginas.
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 111 pruebas sin fallos ni omisiones. [CI #36665074497](https://github.com/KMemphis/Tessitura/actions/runs/36665074497) pasó en Windows, macOS y Ubuntu.
+- No quedan pendientes de F1.14. Siguiente tarea: F1.15, maquetación incremental y rendimiento.
