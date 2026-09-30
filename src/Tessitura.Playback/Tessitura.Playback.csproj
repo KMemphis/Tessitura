@@ -1,4 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MeltySynth" />
+    <PackageReference Include="JAJ.Packages.MiniAudioEx" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Tessitura.Core/Tessitura.Core.csproj" />
   </ItemGroup>
