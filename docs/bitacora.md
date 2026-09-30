@@ -202,3 +202,10 @@
 - `ScoreCanvas` despacha las teclas mediante el registro y `TessituraApplication` registra zoom, reducción de zoom y ajuste de página. Estas acciones controlan la vista y no modifican la partitura.
 - Cinco pruebas nuevas cubren creación de JSON, cambio de atajo, ejecución por ID, validación de entradas y conflictos. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 124 pruebas, sin fallos ni omisiones. [CI #36669310714](https://github.com/KMemphis/Tessitura/actions/runs/36669310714) pasó en Windows, macOS y Ubuntu.
 - Siguiente tarea: F2.2, comandos de edición e historial.
+
+## 2026-09-30 · F2.2a Comandos e historial base
+
+- Se añadió `IScoreCommand` y `EditContext` en Editing. Los comandos insertan y borran notas, cambian altura escrita, alteración, duración y puntillos; insertar en un silencio crea un acorde y borrar su última nota lo convierte en silencio, conservando instante y duración.
+- `History` conserva instantáneas inmutables y selección, deshace y rehace, descarta la rama de rehacer después de una edición nueva y permite consultar si hay pasos disponibles. No se modificó el modelo de Core.
+- Ocho pruebas cubren comandos, selección, bifurcación del historial y una propiedad FsCheck con secuencias generadas. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 132 pruebas, sin fallos ni omisiones.
+- F2.2b implementará el comando de ligadura y requiere extender `Note`. La definición representa la ligadura dentro de `Notes[]`; la decisión de modelo está pendiente de autorización del propietario, según `AGENTS.md`.
