@@ -87,27 +87,49 @@ public sealed class BeamPlacerTests
     }
 
     [Fact]
-    public void GeneratesAscendingDescendingAndMixedBeamCandidates()
+    public void AscendingDescendingAndMixedGroupsMatchApprovedReferences()
     {
-        string? captureDirectory = Environment.GetEnvironmentVariable("TESSITURA_CAPTURE_DIR");
-        if (captureDirectory is null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(captureDirectory);
         SmuflMetadata metadata = Metadata();
         BeamPlacer placer = new(Style.CreateDefault(metadata));
         using DisplayListRenderer renderer = new(FontPath);
-        Save(renderer, GroupPage(placer, metadata, StemDirection.Up,
-            [8, 7, 6, 5], [1, 2, 2, 1]),
-            Path.Combine(captureDirectory, "f1.10-ascending-candidate.png"));
-        Save(renderer, GroupPage(placer, metadata, StemDirection.Down,
-            [4, 5, 6, 7], [2, 2, 2, 2]),
-            Path.Combine(captureDirectory, "f1.10-descending-candidate.png"));
-        Save(renderer, GroupPage(placer, metadata, StemDirection.Up,
-            [7, 5, 7, 6], [1, 2, 1, 3]),
-            Path.Combine(captureDirectory, "f1.10-mixed-candidate.png"));
+        VerifyReference(renderer, GroupPage(placer, metadata, StemDirection.Up,
+            [8, 7, 6, 5], [1, 2, 2, 1]), "ascending");
+        VerifyReference(renderer, GroupPage(placer, metadata, StemDirection.Down,
+            [4, 5, 6, 7], [2, 2, 2, 2]), "descending");
+        VerifyReference(renderer, GroupPage(placer, metadata, StemDirection.Up,
+            [7, 5, 7, 6], [1, 2, 1, 3]), "mixed");
+    }
+
+    private static void VerifyReference(DisplayListRenderer renderer, Page page, string name)
+    {
+        string platform = OperatingSystem.IsWindows() ? "windows" :
+            OperatingSystem.IsMacOS() ? "macos" : "ubuntu";
+        string outputDirectory = Path.Combine(AppContext.BaseDirectory, "reference-diffs");
+        Directory.CreateDirectory(outputDirectory);
+        string candidate = Path.Combine(outputDirectory, $"f1.10-{platform}-{name}-candidate.png");
+        string difference = Path.Combine(outputDirectory, $"f1.10-{platform}-{name}-difference.png");
+        string reference = Path.Combine(Root, "tests", "Tessitura.Engraving.Tests",
+            "References", $"f1.10-{platform}-{name}.png");
+        Save(renderer, page, candidate);
+
+        string? captureDirectory = Environment.GetEnvironmentVariable("TESSITURA_CAPTURE_DIR");
+        if (captureDirectory is not null)
+        {
+            Directory.CreateDirectory(captureDirectory);
+            File.Copy(candidate, Path.Combine(captureDirectory,
+                $"f1.10-{name}-candidate.png"), true);
+        }
+
+        ReferenceImageResult result = ReferenceImageVerifier.Compare(
+            reference, candidate, difference, tolerance: 4, maximumDifferentPixels: 500);
+        if (result.Matches)
+        {
+            File.Delete(candidate);
+            File.Delete(difference);
+        }
+
+        Assert.True(result.Matches,
+            $"{result.DifferentPixels} pixels differ in {name}; see {candidate} and {difference}");
     }
 
     private static Page GroupPage(BeamPlacer placer, SmuflMetadata metadata,

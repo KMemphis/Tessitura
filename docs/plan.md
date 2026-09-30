@@ -37,7 +37,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F1.7 · Segmentos rítmicos.** Columnas que alinean los eventos simultáneos de todos los pentagramas. *Hecho cuando:* piano a dos pentagramas con ritmos distintos alinea cada instante común.
 - [x] **F1.8 · Espaciado horizontal.** Fórmula logarítmica de la definición más ancho mínimo anticolisión; cabecera de sistema con clave, armadura y compás. *Hecho cuando:* una blanca ocupa entre 1,4 y 1,7 veces una negra y ninguna alteración toca la nota anterior.
 - [x] **F1.9 · Colocación en el pentagrama.** Cabezas, plicas, alteraciones, puntillos, silencios y líneas adicionales. *Hecho cuando:* imágenes de referencia de una escala de cuatro octavas y de todos los silencios.
-- [ ] **F1.10 · Barras de corchea.** Inclinación limitada, grosor de SMuFL, barras múltiples y parciales. *Hecho cuando:* imágenes de referencia de grupos ascendentes, descendentes y mixtos.
+- [x] **F1.10 · Barras de corchea.** Inclinación limitada, grosor de SMuFL, barras múltiples y parciales. *Hecho cuando:* imágenes de referencia de grupos ascendentes, descendentes y mixtos.
 - [ ] **F1.11 · Saltos de sistema y justificación.** Programación dinámica tipo Knuth-Plass y reparto del sobrante por elasticidad. *Hecho cuando:* ningún sistema excepto el último queda por debajo del 80 % del ancho sin estirar en exceso.
 - [ ] **F1.12 · Páginas y espaciado vertical.** Saltos de página y separación de pentagramas con skylines básicos. *Hecho cuando:* una partitura de 10 páginas no tiene solapes entre pentagramas.
 - [ ] **F1.13 · Textos de página.** Título, compositor y números de compás con HarfBuzzSharp. *Hecho cuando:* imágenes de referencia de la primera página.
