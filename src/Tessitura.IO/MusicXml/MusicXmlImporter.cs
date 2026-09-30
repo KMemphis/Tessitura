@@ -267,28 +267,14 @@ public static class MusicXmlImporter
                     continue;
                 }
 
-                ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content = score.Content.ToBuilder();
-                for (int m = 0; m < perMeasure.Count; m++)
+                Score? written = VoiceWriter.Write(score, staff, voice, perMeasure, out string? failure);
+                if (written is null)
                 {
-                    StaffMeasureKey key = new(staff, m);
-                    StaffMeasure staffMeasure = content[key];
-                    Voice replaced = new(voice, [.. perMeasure[m]]);
-                    int index = staffMeasure.Voices.ToList().FindIndex(v => v.Number == voice);
-                    content[key] = staffMeasure with
-                    {
-                        Voices = index >= 0 ? staffMeasure.Voices.SetItem(index, replaced) : staffMeasure.Voices.Add(replaced),
-                    };
+                    Warn(part.Id, $"voice {voice} of staff {staff - staffOffset + 1} could not be laid out on the measure grid and was left empty: {failure}");
                 }
-
-                Score candidate = score with { Content = content.ToImmutable() };
-                try
+                else
                 {
-                    score = new NormalizeVoiceCommand().Apply(candidate, new EditContext(staff, 0, voice));
-                }
-                catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException
-                    or ArgumentOutOfRangeException or ArgumentException or OverflowException)
-                {
-                    Warn(part.Id, $"voice {voice} of staff {staff - staffOffset + 1} could not be laid out on the measure grid and was left empty: {exception.Message}");
+                    score = written;
                 }
             }
 

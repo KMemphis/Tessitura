@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Melanchall.DryWetMidi" />
     <ProjectReference Include="../Tessitura.Core/Tessitura.Core.csproj" />
     <ProjectReference Include="../Tessitura.Editing/Tessitura.Editing.csproj" />
     <ProjectReference Include="../Tessitura.Engraving/Tessitura.Engraving.csproj" />
