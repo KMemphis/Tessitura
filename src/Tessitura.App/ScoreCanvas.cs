@@ -13,6 +13,7 @@ namespace Tessitura.App;
 public sealed class ScoreCanvas : Control
 {
     private readonly MusicPreviewRenderer? _musicPreview;
+    private ActionRegistry? _actionRegistry;
     private Point? _dragPointer;
     private bool _userAdjusted;
 
@@ -20,6 +21,7 @@ public sealed class ScoreCanvas : Control
     public ScoreCanvas(MusicPreviewRenderer? musicPreview = null)
     {
         _musicPreview = musicPreview;
+        Focusable = true;
         SizeChanged += (_, args) =>
         {
             if (_userAdjusted || args.NewSize.Width <= 80 || args.NewSize.Height <= 80)
@@ -27,14 +29,7 @@ public sealed class ScoreCanvas : Control
                 return;
             }
 
-            Zoom = Math.Clamp(
-                Math.Min((args.NewSize.Width - 80) / 595, (args.NewSize.Height - 80) / 842),
-                0.25,
-                1);
-            PanOffset = new Vector(
-                (args.NewSize.Width - 595 * Zoom) / 2 - 80 * Zoom,
-                (args.NewSize.Height - 842 * Zoom) / 2 - 40 * Zoom);
-            InvalidateVisual();
+            FitPageToBounds();
         };
     }
 
@@ -72,10 +67,48 @@ public sealed class ScoreCanvas : Control
         InvalidateVisual();
     }
 
+    /// <summary>Changes zoom around the center of the canvas.</summary>
+    /// <param name="factor">The positive zoom multiplier.</param>
+    public void ZoomBy(double factor) =>
+        ZoomAt(new Point(Bounds.Width / 2, Bounds.Height / 2), factor);
+
+    /// <summary>Fits the page into the current canvas bounds.</summary>
+    public void FitPage()
+    {
+        FitPageToBounds();
+        if (Bounds.Width > 80 && Bounds.Height > 80)
+        {
+            _userAdjusted = true;
+        }
+    }
+
+    internal void AttachActionRegistry(ActionRegistry actionRegistry)
+    {
+        ArgumentNullException.ThrowIfNull(actionRegistry);
+        if (_actionRegistry is not null)
+        {
+            throw new InvalidOperationException("An action registry is already attached to this canvas.");
+        }
+
+        _actionRegistry = actionRegistry;
+    }
+
     /// <inheritdoc />
     public override void Render(DrawingContext context)
     {
         context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset, _musicPreview));
+    }
+
+    /// <inheritdoc />
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (_actionRegistry?.TryExecute(e.Key, e.KeyModifiers) == true)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 
     /// <inheritdoc />
@@ -96,6 +129,7 @@ public sealed class ScoreCanvas : Control
     /// <inheritdoc />
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
+        Focus();
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
         {
             _dragPointer = e.GetPosition(this);
@@ -125,6 +159,23 @@ public sealed class ScoreCanvas : Control
             e.Pointer.Capture(null);
             e.Handled = true;
         }
+    }
+
+    private void FitPageToBounds()
+    {
+        if (Bounds.Width <= 80 || Bounds.Height <= 80)
+        {
+            return;
+        }
+
+        Zoom = Math.Clamp(
+            Math.Min((Bounds.Width - 80) / 595, (Bounds.Height - 80) / 842),
+            0.25,
+            1);
+        PanOffset = new Vector(
+            (Bounds.Width - 595 * Zoom) / 2 - 80 * Zoom,
+            (Bounds.Height - 842 * Zoom) / 2 - 40 * Zoom);
+        InvalidateVisual();
     }
 
     private sealed class PageDrawOperation(

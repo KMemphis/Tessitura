@@ -195,3 +195,10 @@
 - Dos pruebas nuevas verifican los 20 identificadores, renderizan cada página y comparan el PNG con su referencia de plataforma. La matriz usa imágenes específicas por sistema operativo para conservar los umbrales de comparación frente a diferencias de rasterizado.
 - `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores. `dotnet test Tessitura.sln --configuration Release --no-build` pasó 119 pruebas, sin fallos ni omisiones. [CI #36668009068](https://github.com/KMemphis/Tessitura/actions/runs/36668009068) pasó en Windows, macOS y Ubuntu.
 - No quedan tareas de F1. Para la puerta F1, la maquetación de 30 pentagramas × 300 compases midió 4,86 ms completa y 38,59 µs por cambio de una nota; los 20 ejemplos están aprobados. Siguiente: presentar la evidencia de la puerta F1 y esperar aprobación antes de F2.
+
+## 2026-09-30 · F2.1 ActionRegistry y atajos
+
+- Se añadió `ActionRegistry` en App con identificadores estables, nombres, atajos predeterminados y despacho por atajo o ID. La configuración versionada `shortcuts.json` se crea en la carpeta de ajustes del usuario y permite cambiar los atajos sin recompilar; los IDs desconocidos, atajos inválidos y conflictos se rechazan.
+- `ScoreCanvas` despacha las teclas mediante el registro y `TessituraApplication` registra zoom, reducción de zoom y ajuste de página. Estas acciones controlan la vista y no modifican la partitura.
+- Cinco pruebas nuevas cubren creación de JSON, cambio de atajo, ejecución por ID, validación de entradas y conflictos. `dotnet build Tessitura.sln --configuration Release` terminó con 0 advertencias y 0 errores; `dotnet test Tessitura.sln --configuration Release --no-build` pasó 124 pruebas, sin fallos ni omisiones. [CI #36669310714](https://github.com/KMemphis/Tessitura/actions/runs/36669310714) pasó en Windows, macOS y Ubuntu.
+- Siguiente tarea: F2.2, comandos de edición e historial.

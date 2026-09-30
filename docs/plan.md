@@ -49,7 +49,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 
 ## F2 · Editor MVP (semanas 17–26)
 
-- [ ] **F2.1 · ActionRegistry y atajos.** Registro central de acciones con identificador, nombre y atajo, y atajos configurables en JSON. *Hecho cuando:* cambiar un atajo en el JSON cambia el comportamiento sin recompilar.
+- [x] **F2.1 · ActionRegistry y atajos.** Registro central de acciones con identificador, nombre y atajo, y atajos configurables en JSON. *Hecho cuando:* cambiar un atajo en el JSON cambia el comportamiento sin recompilar.
 - [ ] **F2.2 · Comandos e historial.** `IScoreCommand`, `History` y los comandos de insertar y borrar nota, cambiar altura, duración, alteración, puntillo y ligadura de unión. *Hecho cuando:* cualquier secuencia de comandos deshecha por completo devuelve una partitura idéntica a la inicial (prueba de propiedades).
 - [ ] **F2.3 · Notación rítmica automática.** Relleno con silencios, división con ligadura al cruzar la barra y reescritura de silencios según el compás. *Hecho cuando:* la invariante de compás se cumple tras cualquier comando.
 - [ ] **F2.4 · Cursor y modo de entrada.** Modo de entrada (`N`, `Esc`), cursor musical en la capa superpuesta, octava más cercana y atajos de la definición. *Hecho cuando:* se escribe una escala de Do mayor solo con el teclado.
