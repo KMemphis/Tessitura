@@ -132,3 +132,9 @@
 - Se eligió plica arriba por debajo de la línea central y abajo desde la línea central. La agrupación usa `Fraction` para duraciones y límites: pulso de negra en 2/4 y 3/4, medio compás en 4/4 y 2/2, y negra con puntillo en 6/8 y 9/8.
 - Trece pruebas nuevas cubren los seis compases, cinco posiciones de plica y cortes por silencio, hueco y nota larga. La división de 4/4 en medios compases sigue [*Behind Bars*, «Metre > Beaming according to the metre», p. 153](https://www.behindbarsnotation.co.uk/contents/sample_pages.pdf).
 - `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 75 pruebas sin fallos ni omisiones. Siguiente tarea: F1.7, segmentos rítmicos.
+
+## 2026-09-29 · F1.7 Segmentos rítmicos
+
+- Se añadió un constructor de segmentos en Engraving que lee una medida de `Score`, agrupa todos los eventos por inicio exacto `Fraction` y conserva `EventId`, pentagrama y voz en orden.
+- Dos pruebas nuevas verifican un piano con negras en la mano derecha y blancas en la izquierda: ambas coinciden en los instantes 0 y 1/2. Una segunda voz en el pentagrama superior comparte esas mismas columnas.
+- `dotnet build` terminó con 0 advertencias y 0 errores; `dotnet test` pasó 77 pruebas sin fallos ni omisiones. Siguiente tarea: F1.8, espaciado horizontal y cabecera de sistema.
