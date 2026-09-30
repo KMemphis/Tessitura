@@ -270,3 +270,12 @@
 - Pruebas nuevas: dos en `ScorePaletteTests` (aplicar clave, armadura y alteración con un clic y deshacer; cambio de compás conserva eventos e invariante) y una en `ScorePageComposerTests` (cabecera Fa, armadura y accidentales). `dotnet build` 0 advertencias y 0 errores; `dotnet test` pasó 167 pruebas, sin fallos ni omisiones.
 - Deuda: los cambios de armadura o clave a mitad de sistema no se dibujan aún (las notas sí usan la armadura correcta); la posición vertical de la clave de Sol (3,5) es anterior a esta tarea y se revisará en F5.10; la armadura de Do tenor con sostenidos sigue una disposición ascendente pendiente de contrastar con Behind Bars.
 - Siguiente tarea: F2.10, formato .tess.
+
+## 2026-09-30 · F2.10 Formato .tess
+
+- `Tessitura.IO` ahora referencia Core y Engraving (para `Style`, cuyo contexto JSON ya existía); Engraving no depende de IO, así que la prueba de arquitectura sigue intacta. Sin dependencias nuevas: `System.IO.Compression` y `System.Text.Json` con generación de código en compilación.
+- `TessFile.Save/Open`: ZIP con `manifest.json` (versión de formato 1 y de la app), `score.json` (mediante DTO explícitos, orden determinista, `Fraction` como numerador/denominador, alturas escritas) y `style.json`. El guardado es atómico: temporal hermano, vaciado a disco y `File.Move` con sobrescritura.
+- `TessMigrator` aplica la cadena de migraciones sobre el JSON de `score.json` desde la versión del manifiesto hasta la actual y rechaza archivos más nuevos que la aplicación. `RecoveryAutosave` escribe `<archivo>.recovery` cada 2 minutos (intervalo configurable en pruebas) y permite descartarlo.
+- Cinco pruebas nuevas: ida y vuelta idéntica (metadatos, claves, armaduras, ligaduras, `EventId`, `Fraction`, estilo), reemplazo atómico sin temporales, migración de un archivo de versión 0, rechazo de versión futura y autosave. `dotnet build` 0 advertencias; `dotnet test` pasó 172 pruebas sin fallos ni omisiones.
+- Deuda: aún no existen migraciones reales (la versión 1 es la primera; la prueba usa una migración sintética de la 0); `thumbnail.png` y `parts/` se añadirán con la pantalla de inicio (F2.11) y las partes (F4); guardar/abrir y el autoguardado aún no están conectados a acciones de la interfaz (necesitan selector de archivos y documento activo, F2.11).
+- Siguiente tarea: F2.11, inicio y asistente.
