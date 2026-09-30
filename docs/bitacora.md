@@ -37,3 +37,11 @@
 - `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 17 pruebas, sin fallos ni omisiones.
 - Pendiente: F0.6, duración de figuras con puntillos.
 
+## 2026-09-29 · F0.6 Duration
+
+- Se añadieron las figuras de redonda a garrapatea y los puntillos, con longitud exacta en `Fraction`.
+- El constructor rechaza figuras inválidas y cantidades de puntillos cuya longitud no cabe en una fracción de 64 bits.
+- La prueba principal verifica que la negra con doble puntillo vale 7/16; otras pruebas cubren un puntillo y entradas inválidas.
+- `dotnet build` terminó con 0 advertencias y 0 errores. `dotnet test` pasó 20 pruebas, sin fallos ni omisiones.
+- Pendiente: F0.7, modelo mínimo e invariante de compás.
+
