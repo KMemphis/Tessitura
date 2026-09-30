@@ -62,7 +62,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F2.10 · Formato .tess.** ZIP con manifiesto versionado, guardado atómico, marco de migraciones y autoguardado cada 2 minutos. *Hecho cuando:* guardar y abrir devuelve una partitura idéntica, y un archivo de versión anterior se migra.
 - [x] **F2.11 · Inicio y asistente.** Pantalla de inicio con recientes y asistente de nueva partitura con plantillas de piano, cuarteto de cuerda y coro SATB. *Hecho cuando:* se crea cada plantilla en menos de cinco clics.
 - [x] **F2.12 · Paleta de comandos.** `Ctrl+K` con búsqueda difusa sobre el ActionRegistry. *Hecho cuando:* toda acción registrada aparece y se ejecuta desde la paleta.
-- [ ] **F2.13 · Copiar y pegar interno.** Copia de rangos y pegado respetando voz y pentagrama de destino. *Hecho cuando:* pegar cuatro compases en otro pentagrama conserva ritmo y alturas.
+- [x] **F2.13 · Copiar y pegar interno.** Copia de rangos y pegado respetando voz y pentagrama de destino. *Hecho cuando:* pegar cuatro compases en otro pentagrama conserva ritmo y alturas.
 
 **Puerta F2:** escribir un coral SATB completo sin ratón, guardarlo, reabrirlo y exportarlo a PDF. Versión MVP interna.
 

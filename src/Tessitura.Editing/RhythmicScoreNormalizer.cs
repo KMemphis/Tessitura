@@ -177,7 +177,7 @@ internal static class RhythmicScoreNormalizer
         while (scoreLength < requiredLength)
         {
             Measure previousMeasure = measures[^1];
-            Measure newMeasure = new(previousMeasure.Number + 1, previousMeasure.TimeSignature);
+            Measure newMeasure = previousMeasure with { Number = previousMeasure.Number + 1 };
             int newMeasureIndex = measures.Count;
             measures.Add(newMeasure);
 

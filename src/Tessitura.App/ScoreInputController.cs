@@ -40,6 +40,7 @@ public sealed class ScoreInputController
     private readonly History _history;
     private readonly Stack<EditorStateSnapshot> _undoStates = new();
     private readonly Stack<EditorStateSnapshot> _redoStates = new();
+    private ClipboardFragment? _clipboard;
     private EventId? _lastEventId;
     private EditContext? _lastContext;
     private Pitch? _lastPitch;
@@ -138,6 +139,8 @@ public sealed class ScoreInputController
     {
         ImmutableArray<ActionDefinition>.Builder actions = ImmutableArray.CreateBuilder<ActionDefinition>();
         actions.Add(new ActionDefinition("score.note-entry", "Modo de entrada de notas", "N", EnterNoteEntry));
+        actions.Add(new ActionDefinition("edit.copy", "Copiar", "Ctrl+C", () => CopySelection()));
+        actions.Add(new ActionDefinition("edit.paste", "Pegar", "Ctrl+V", () => PasteClipboard()));
         actions.Add(new ActionDefinition("score.selection-mode", "Modo de selección", "Esc", ExitNoteEntry));
         actions.Add(new ActionDefinition("score.note.c", "Escribir Do", "C", () => WriteNote(Step.C)));
         actions.Add(new ActionDefinition("score.note.d", "Escribir Re", "D", () => WriteNote(Step.D)));
@@ -312,6 +315,69 @@ public sealed class ScoreInputController
     /// <returns>Whether a selected event was changed.</returns>
     public bool ChangeSelectedDotCount(int dotCount) =>
         ApplySelectedEvent(properties => new ChangeDotCountCommand(properties.EventId, dotCount));
+
+    /// <summary>Gets whether the internal clipboard holds a copied fragment.</summary>
+    public bool CanPaste => _clipboard is not null;
+
+    /// <summary>Copies the selected events into the internal clipboard.</summary>
+    /// <returns>Whether the selection contained events to copy.</returns>
+    public bool CopySelection()
+    {
+        ClipboardFragment? fragment = ClipboardFragment.Copy(CurrentScore, CurrentSelection);
+        if (fragment is null)
+        {
+            return false;
+        }
+
+        _clipboard = fragment;
+        NotifyStateChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Pastes the clipboard at the first selected event (its staff, voice and position), or at the
+    /// input cursor when nothing is selected or note entry is active.
+    /// </summary>
+    /// <returns>Whether the fragment could be pasted.</returns>
+    public bool PasteClipboard()
+    {
+        if (_clipboard is not ClipboardFragment fragment)
+        {
+            return false;
+        }
+
+        EditContext context = new(Cursor.StaffIndex, 0, Cursor.VoiceNumber);
+        Fraction position = Cursor.Position;
+        if (Mode != ScoreInputMode.NoteEntry && !CurrentSelection.Items.IsDefaultOrEmpty)
+        {
+            EventLocation? first = null;
+            foreach (SelectionItem item in CurrentSelection.Items)
+            {
+                EventLocation candidate = FindEventLocation(item.EventId);
+                if (first is null || candidate.Position.Position < first.Value.Position.Position ||
+                    (candidate.Position.Position == first.Value.Position.Position &&
+                     candidate.Position.StaffIndex < first.Value.Position.StaffIndex))
+                {
+                    first = candidate;
+                }
+            }
+
+            context = first!.Value.Context;
+            position = first.Value.Position.Position;
+        }
+
+        try
+        {
+            Apply(new PasteCommand(fragment, position), context);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+
+        NotifyStateChanged();
+        return true;
+    }
 
     /// <summary>Changes the initial clef on the selected event's staff.</summary>
     /// <param name="clef">The new staff clef.</param>
