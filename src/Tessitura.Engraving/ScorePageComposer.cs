@@ -60,6 +60,12 @@ public sealed class ScorePageComposer
         }
 
         double staffPitch = StaffHeightSpaces + StaffGapSpaces;
+        if (score.AttachmentList.Length > 0 || score.SpannerList.Length > 0)
+        {
+            // Marks above and below the staves need room: shrink the staff space so the skylines fit on the page.
+            staffPitch += 22;
+        }
+
         double maximumStaffSpace = (PageHeightPoints - 2 * VerticalMarginPoints) /
             (staffCount * staffPitch + StaffGapSpaces);
         return Math.Min(RequestedStaffSpacePoints, maximumStaffSpace);
@@ -133,7 +139,22 @@ public sealed class ScorePageComposer
         StaffElementPlacer placer = new(_metadata, _style);
         EventId staffLineId = new(Guid.Empty);
         VerticalLayoutResult verticalLayout = BuildVerticalLayout(layout.Systems,
-            staffCount, pageHeight, topMargin);
+            staffCount, pageHeight, topMargin, null);
+        if (score.AttachmentList.Length > 0 || score.SpannerList.Length > 0)
+        {
+            // Marks push their neighbours apart: measure how far each system's notation really reaches above and
+            // below every staff, then space the staves and systems against those skylines.
+            try
+            {
+                verticalLayout = BuildVerticalLayout(layout.Systems, staffCount, pageHeight, topMargin,
+                    MeasureExtents(score, layout, verticalLayout, staffCount, placer, leftMargin, cancellationToken));
+            }
+            catch (InvalidOperationException)
+            {
+                // A system with all its marks would not fit on a page: keep the compact spacing rather than fail.
+            }
+        }
+
         int pageNumber = verticalLayout.Systems[systemIndex].PageNumber;
         SystemState state = new(BuildAttachmentIndex(score));
 
@@ -146,52 +167,7 @@ public sealed class ScorePageComposer
                 continue;
             }
 
-            SystemLine pageSystem = layout.Systems[pageSystemIndex];
-            ImmutableArray<double> measureWidths = GetDisplayMeasureWidths(score, layout, pageSystem);
-            SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount);
-            double musicStartX = leftMargin + pageHeader.MusicStartX;
-            double systemWidth = Sum(measureWidths);
-            double musicEndX = musicStartX + systemWidth;
-            state.Geometry.Clear();
-            int systemFirstPrimitive = primitives.Count;
-            for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                double staffTop = placement.StaffTops[staffIndex];
-                primitives.AddRange(placer.PlaceStaffLines(staffLineId, leftMargin,
-                    musicEndX, staffTop));
-                Clef staffClef = GetStaffClef(score, staffIndex);
-                SystemHeaderLayout staffHeader = _horizontalSpacer.BuildHeader(_metadata,
-                    ClefGlyphName(staffClef), score.Measures[pageSystem.Range.StartIndex].KeySignature,
-                    score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
-                AddHeader(primitives, staffHeader, leftMargin, staffTop, staffClef,
-                    score.Measures[pageSystem.Range.StartIndex].KeySignature);
-                AddBarline(primitives, staffLineId,
-                    musicStartX - _style.MinimumRhythmicGap, staffTop,
-                    _style.StaffLineThickness);
-
-                double measureStartX = musicStartX;
-                for (int localMeasure = 0; localMeasure < pageSystem.Range.Count; localMeasure++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    int scoreMeasureIndex = pageSystem.Range.StartIndex + localMeasure;
-                    double measureWidth = measureWidths[localMeasure];
-                    if (score.Content.TryGetValue(new StaffMeasureKey(staffIndex, scoreMeasureIndex),
-                        out StaffMeasure? staffMeasure))
-                    {
-                        AddStaffMeasure(primitives, placer, score, staffMeasure,
-                            scoreMeasureIndex, staffClef, measureStartX, measureWidth, staffTop,
-                            state, staffIndex, cancellationToken);
-                    }
-
-                    measureStartX += measureWidth;
-                    AddBarline(primitives, staffLineId, measureStartX, staffTop,
-                        _style.StaffLineThickness);
-                }
-            }
-
-            AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
-            AddLines(primitives, score, state, musicStartX, musicEndX);
+            DrawSystem(primitives, score, layout, pageSystemIndex, placement, staffCount, placer, state, leftMargin, cancellationToken);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -202,6 +178,68 @@ public sealed class ScorePageComposer
                 GetDisplayMeasureWidths(score, layout, system))
             : null;
         return new ScorePageComposition(page, staffSpace, systemIndex, system.Range, cursorLocation);
+    }
+
+    // Draws one system (all its staves, marks and spanners) into the list, returning nothing: the caller owns the list.
+    private void DrawSystem(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, ScoreLayoutResult layout,
+        int pageSystemIndex, SystemVerticalPlacement placement, int staffCount, StaffElementPlacer placer, SystemState state,
+        double leftMargin, CancellationToken cancellationToken)
+    {
+        EventId staffLineId = new(Guid.Empty);
+        SystemLine pageSystem = layout.Systems[pageSystemIndex];
+        ImmutableArray<double> measureWidths = GetDisplayMeasureWidths(score, layout, pageSystem);
+        SystemHeaderLayout pageHeader = BuildSystemHeader(score, pageSystem.Range.StartIndex, staffCount);
+        double musicStartX = leftMargin + pageHeader.MusicStartX;
+        double systemWidth = Sum(measureWidths);
+        double musicEndX = musicStartX + systemWidth;
+        state.Geometry.Clear();
+        state.Annotations.Clear();
+        int systemFirstPrimitive = primitives.Count;
+        for (int staffIndex = 0; staffIndex < staffCount; staffIndex++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            double staffTop = placement.StaffTops[staffIndex];
+            int staffStart = primitives.Count;
+            primitives.AddRange(placer.PlaceStaffLines(staffLineId, leftMargin,
+                musicEndX, staffTop));
+            Clef staffClef = GetStaffClef(score, staffIndex);
+            SystemHeaderLayout staffHeader = _horizontalSpacer.BuildHeader(_metadata,
+                ClefGlyphName(staffClef), score.Measures[pageSystem.Range.StartIndex].KeySignature,
+                score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
+            AddHeader(primitives, staffHeader, leftMargin, staffTop, staffClef,
+                score.Measures[pageSystem.Range.StartIndex].KeySignature);
+            AddBarline(primitives, staffLineId,
+                musicStartX - _style.MinimumRhythmicGap, staffTop,
+                _style.StaffLineThickness);
+
+            double measureStartX = musicStartX;
+            for (int localMeasure = 0; localMeasure < pageSystem.Range.Count; localMeasure++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int scoreMeasureIndex = pageSystem.Range.StartIndex + localMeasure;
+                double measureWidth = measureWidths[localMeasure];
+                if (score.Content.TryGetValue(new StaffMeasureKey(staffIndex, scoreMeasureIndex),
+                    out StaffMeasure? staffMeasure))
+                {
+                    AddStaffMeasure(primitives, placer, score, staffMeasure,
+                        scoreMeasureIndex, staffClef, measureStartX, measureWidth, staffTop,
+                        state, staffIndex, cancellationToken);
+                }
+
+                measureStartX += measureWidth;
+                AddBarline(primitives, staffLineId, measureStartX, staffTop,
+                    _style.StaffLineThickness);
+            }
+
+            for (int tagged = staffStart; tagged < primitives.Count; tagged++)
+            {
+                state.StaffByPrimitive[primitives[tagged]] = staffIndex;
+            }
+        }
+
+        AddLines(primitives, score, state, musicStartX, musicEndX);
+        ResolveAnnotations(primitives, state, systemFirstPrimitive);
+        AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
     }
 
     private SystemHeaderLayout BuildSystemHeader(Score score, int measureIndex, int staffCount)
@@ -283,6 +321,8 @@ public sealed class ScorePageComposer
         articulations.CurrentStaff = staffIndex;
         AccidentalMark[] marks = ResolveAccidentals(score.Measures[measureIndex], measureIndex, staffMeasure,
             out (int Voice, EventId Event, int Note)[] order);
+        PackColumns(articulations, staffMeasure, score.Measures[measureIndex].TimeSignature.Length, measureStartX, measureWidth,
+            order, marks);
         bool manyVoices = staffMeasure.Voices.Length > 1;
         double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
         double barLength = (double)score.Measures[measureIndex].TimeSignature.Length.Num /
@@ -317,7 +357,9 @@ public sealed class ScorePageComposer
         bool manyVoices, double headWidth, StemDirection? voiceStem, double restShift,
         SystemState articulations)
     {
-        double x = measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
+        double x = articulations.ColumnX.TryGetValue(position, out double packed)
+            ? packed
+            : measureStartX + measureWidth * ((double)position.Num / position.Den) / barLength;
         AddAnnotations(primitives, leaf.Id, x, staffTop, articulations);
         if (leaf is Rest rest)
         {
@@ -375,6 +417,66 @@ public sealed class ScorePageComposer
         }
     
         AddArticulations(primitives, placer, chord, x + headWidth / 2, staffTop, clef, voiceStem, articulations);
+    }
+
+    // Behind Bars, Spacing: proportional spacing is a starting point; a column never sits closer to the previous one
+    // than their extents allow, so accidental columns, displaced heads and dots do not run into their neighbours.
+    private void PackColumns(SystemState state, StaffMeasure staffMeasure, Fraction barLength, double measureStartX, double measureWidth,
+        (int Voice, EventId Event, int Note)[] order, AccidentalMark[] marks)
+    {
+        state.ColumnX.Clear();
+        SortedDictionary<Fraction, (double Left, double Right)> extents = [];
+        double headWidth = _metadata.GetBoundingBox("noteheadBlack").NorthEast.X;
+        foreach (Voice voice in staffMeasure.Voices)
+        {
+            foreach ((MusicEvent leaf, Fraction onset, _) in voice.Events.Flatten())
+            {
+                double left = 0;
+                double right = headWidth;
+                if (leaf is Chord chord)
+                {
+                    // Every visible accidental (naturals included) may need a column of its own.
+                    double accidentalColumns = 0;
+                    for (int i = 0; i < order.Length; i++)
+                    {
+                        if (order[i].Event == chord.Id && marks[i] != AccidentalMark.None)
+                        {
+                            accidentalColumns += _style.MinimumAccidentalGap + 1.0;
+                        }
+                    }
+
+                    left = accidentalColumns;
+                    int[] diatonic = [.. chord.Notes.Select(n => n.Pitch.Octave * 7 + (int)n.Pitch.Step).Order()];
+                    for (int i = 1; i < diatonic.Length; i++)
+                    {
+                        if (diatonic[i] - diatonic[i - 1] == 1)
+                        {
+                            left += headWidth;
+                            right += headWidth;
+                            break;
+                        }
+                    }
+
+                    right += chord.Duration.Dots * 0.8;
+                }
+
+                extents[onset] = extents.TryGetValue(onset, out (double Left, double Right) known)
+                    ? (Math.Max(known.Left, left), Math.Max(known.Right, right))
+                    : (left, right);
+            }
+        }
+
+        double previousRight = double.NegativeInfinity;
+        double x = measureStartX;
+        bool first = true;
+        foreach ((Fraction onset, (double left, double right)) in extents)
+        {
+            double proportional = measureStartX + measureWidth * ((double)onset.Num / onset.Den) / ((double)barLength.Num / barLength.Den);
+            x = first ? Math.Max(proportional, measureStartX + left) : Math.Max(proportional, previousRight + left + _style.MinimumAccidentalGap);
+            state.ColumnX[onset] = x;
+            previousRight = x + right;
+            first = false;
+        }
     }
 
     private static void RecordGeometry(SystemState state, Chord chord, double centerX, double staffTop, Clef clef, StemDirection? voiceStem)
@@ -492,7 +594,7 @@ public sealed class ScorePageComposer
 
     // Hairpins and pedal lines sit below the staff, octave lines above it; each is drawn open at a system edge when it
     // continues into another system. Behind Bars, Dynamics > Hairpins; Octave lines; Pedal marks.
-    private void AddLines(ImmutableArray<DrawingPrimitive>.Builder primitives, Score score, SystemState state,
+    private void AddLines(ImmutableArray<DrawingPrimitive>.Builder output, Score score, SystemState state,
         double musicStartX, double musicEndX)
     {
         foreach (Spanner spanner in score.SpannerList)
@@ -528,6 +630,7 @@ public sealed class ScorePageComposer
 
             ElementId id = new(spanner.Start.Value);
             double thickness = _style.StaffLineThickness * 1.2;
+            ImmutableArray<DrawingPrimitive>.Builder primitives = ImmutableArray.CreateBuilder<DrawingPrimitive>();
             switch (spanner.Kind)
             {
                 case SpannerKind.Crescendo:
@@ -586,12 +689,120 @@ public sealed class ScorePageComposer
                     break;
                 }
             }
+
+            state.Annotations.Add(new AnnotationGroup(primitives.ToImmutable(), spanner.Kind == SpannerKind.OctaveUp,
+                spanner.Kind == SpannerKind.OctaveUp || spanner.Kind == SpannerKind.OctaveDown ? 3 : 1, start.StaffIndex));
         }
     }
 
     private static DisplayLine HairpinLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>
         new(id, new DisplayBox(Math.Min(x1, x2), Math.Min(y1, y2) - thickness / 2, Math.Abs(x2 - x1), Math.Abs(y2 - y1) + thickness),
             new DisplayPoint(x1, y1), new DisplayPoint(x2, y2), thickness);
+
+    // Places the movable marks against the skyline of everything already drawn: each group starts where its
+    // rule puts it and moves outward in half-space steps until it touches no head, stem, accidental, articulation
+    // or earlier mark. Groups nearest the staff are placed first so stacking runs from the staff outward.
+    private static void ResolveAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives, SystemState state, int firstPrimitive)
+    {
+        // Obstacles are kept per staff: a staff's marks only have to clear that staff's own notation, and the
+        // vertical layout then keeps neighbouring staves far enough apart.
+        Dictionary<int, List<DisplayBox>> obstacles = [];
+        for (int i = firstPrimitive; i < primitives.Count; i++)
+        {
+            DrawingPrimitive primitive = primitives[i];
+            if (primitive.ElementId.Value == Guid.Empty || (primitive is DisplayLine line && line.Start.Y == line.End.Y) ||
+                !state.StaffByPrimitive.TryGetValue(primitive, out int staff))
+            {
+                continue;
+            }
+
+            if (!obstacles.TryGetValue(staff, out List<DisplayBox>? list))
+            {
+                list = [];
+                obstacles[staff] = list;
+            }
+
+            list.Add(primitive.Bounds);
+        }
+
+        foreach (AnnotationGroup group in state.Annotations.OrderBy(g => g.StaffIndex).ThenBy(g => g.Above).ThenBy(g => g.Priority))
+        {
+            if (!obstacles.TryGetValue(group.StaffIndex, out List<DisplayBox>? own))
+            {
+                own = [];
+                obstacles[group.StaffIndex] = own;
+            }
+
+            DisplayBox box = Union(group.Items);
+            double shift = 0;
+            for (int step = 0; step < 60 && Collides(box, shift, own); step++)
+            {
+                shift += group.Above ? -0.5 : 0.5;
+            }
+
+            foreach (DrawingPrimitive item in group.Items)
+            {
+                DrawingPrimitive placed = Translate(item, shift);
+                primitives.Add(placed);
+                own.Add(placed.Bounds);
+                state.StaffByPrimitive[placed] = group.StaffIndex;
+            }
+        }
+    }
+
+    private static DisplayBox Union(ImmutableArray<DrawingPrimitive> items)
+    {
+        double left = double.MaxValue;
+        double top = double.MaxValue;
+        double right = double.MinValue;
+        double bottom = double.MinValue;
+        foreach (DrawingPrimitive item in items)
+        {
+            left = Math.Min(left, item.Bounds.X);
+            top = Math.Min(top, item.Bounds.Y);
+            right = Math.Max(right, item.Bounds.X + item.Bounds.Width);
+            bottom = Math.Max(bottom, item.Bounds.Y + item.Bounds.Height);
+        }
+
+        return new DisplayBox(left, top, right - left, bottom - top);
+    }
+
+    private static bool Collides(DisplayBox box, double shift, List<DisplayBox> obstacles)
+    {
+        const double air = 0.15;
+        foreach (DisplayBox other in obstacles)
+        {
+            if (box.X < other.X + other.Width + air && other.X < box.X + box.Width + air &&
+                box.Y + shift < other.Y + other.Height + air && other.Y < box.Y + shift + box.Height + air)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static DrawingPrimitive Translate(DrawingPrimitive primitive, double dy)
+    {
+        if (dy == 0)
+        {
+            return primitive;
+        }
+
+        DisplayBox bounds = primitive.Bounds with { Y = primitive.Bounds.Y + dy };
+        return primitive switch
+        {
+            DisplayGlyph glyph => glyph with { Bounds = bounds, Origin = new DisplayPoint(glyph.Origin.X, glyph.Origin.Y + dy) },
+            DisplayLine line => line with
+            {
+                Bounds = bounds,
+                Start = new DisplayPoint(line.Start.X, line.Start.Y + dy),
+                End = new DisplayPoint(line.End.X, line.End.Y + dy),
+            },
+            DisplayLists.Text text => text with { Bounds = bounds, Origin = new DisplayPoint(text.Origin.X, text.Origin.Y + dy) },
+            _ => primitive,
+        };
+    }
 
     private static double CurveY(double x0, double y0, double x3, double y3, double height, double sign, double t, out double x)
     {
@@ -649,7 +860,7 @@ public sealed class ScorePageComposer
     }
 
     // Dynamics sit below the staff, tempo marks and chord symbols above it, expression text below the dynamics.
-    private void AddAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives, EventId eventId, double x,
+    private void AddAnnotations(ImmutableArray<DrawingPrimitive>.Builder output, EventId eventId, double x,
         double staffTop, SystemState attachments)
     {
         if (!attachments.Attachments.TryGetValue(eventId, out List<Attachment>? list))
@@ -661,6 +872,7 @@ public sealed class ScorePageComposer
         double centerX = x + _metadata.GetBoundingBox("noteheadBlack").NorthEast.X / 2;
         foreach (Attachment attachment in list)
         {
+            ImmutableArray<DrawingPrimitive>.Builder primitives = ImmutableArray.CreateBuilder<DrawingPrimitive>();
             switch (attachment)
             {
                 case DynamicAttachment dynamic:
@@ -703,6 +915,19 @@ public sealed class ScorePageComposer
                 case TextAttachment text:
                     AddText(primitives, id, text.Text, x, staffTop + 10.5, 2.6);
                     break;
+            }
+
+            if (primitives.Count > 0)
+            {
+                // Marks near the staff come first: dynamics, then tempo and chord symbols, then text.
+                (bool above, int priority) = attachment switch
+                {
+                    DynamicAttachment => (false, 0),
+                    TempoAttachment => (true, 1),
+                    ChordSymbolAttachment => (true, 0),
+                    _ => (false, 2),
+                };
+                attachments.Annotations.Add(new AnnotationGroup(primitives.ToImmutable(), above, priority, attachments.CurrentStaff));
             }
         }
     }
@@ -759,7 +984,9 @@ public sealed class ScorePageComposer
         {
             AddLeaf(primitives, placer, leaf, onset, voice, staffMeasure, clef, measureStartX, measureWidth, staffTop,
                 barLength, order, marks, manyVoices, headWidth, voiceStem, restShift, articulations);
-            double x = measureStartX + measureWidth * ((double)onset.Num / onset.Den) / barLength;
+            double x = articulations.ColumnX.TryGetValue(onset, out double packedX)
+                ? packedX
+                : measureStartX + measureWidth * ((double)onset.Num / onset.Den) / barLength;
             left = Math.Min(left, x);
             right = Math.Max(right, x + 1.2);
         }
@@ -801,7 +1028,17 @@ public sealed class ScorePageComposer
         public Dictionary<EventId, EventGeometry> Geometry { get; } = [];
 
         public int CurrentStaff { get; set; }
+
+        // Horizontal position of each rhythmic column of the staff measure being drawn.
+        public Dictionary<Fraction, double> ColumnX { get; } = [];
+
+        public List<AnnotationGroup> Annotations { get; } = [];
+
+        // Which staff each drawn primitive belongs to, so marks and skylines are resolved staff by staff.
+        public Dictionary<DrawingPrimitive, int> StaffByPrimitive { get; } = new(ReferenceEqualityComparer.Instance);
     }
+
+    private sealed record AnnotationGroup(ImmutableArray<DrawingPrimitive> Items, bool Above, int Priority, int StaffIndex);
 
     private static DisplayLine BracketLine(ElementId id, double x1, double y1, double x2, double y2, double thickness) =>
         new(id, new DisplayBox(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1) + thickness, Math.Abs(y2 - y1) + thickness),
@@ -1055,22 +1292,63 @@ public sealed class ScorePageComposer
         return total;
     }
 
-    private static VerticalLayoutResult BuildVerticalLayout(ImmutableArray<SystemLine> systems,
-        int staffCount, double pageHeight, double pageMargin)
+    private StaffSkyline[][] MeasureExtents(Score score, ScoreLayoutResult layout, VerticalLayoutResult provisional,
+        int staffCount, StaffElementPlacer placer, double leftMargin, CancellationToken cancellationToken)
     {
-        ImmutableArray<StaffSkyline>.Builder staves = ImmutableArray.CreateBuilder<StaffSkyline>(staffCount);
-        for (int index = 0; index < staffCount; index++)
+        StaffSkyline[][] extents = new StaffSkyline[layout.Systems.Length][];
+        for (int systemIndex = 0; systemIndex < layout.Systems.Length; systemIndex++)
         {
-            staves.Add(new StaffSkyline(0.5, 0.5));
+            cancellationToken.ThrowIfCancellationRequested();
+            SystemVerticalPlacement placement = provisional.Systems[systemIndex];
+            ImmutableArray<DrawingPrimitive>.Builder drawn = ImmutableArray.CreateBuilder<DrawingPrimitive>();
+            SystemState scratch = new(BuildAttachmentIndex(score));
+            DrawSystem(drawn, score, layout, systemIndex, placement, staffCount, placer, scratch, leftMargin, cancellationToken);
+            double[] top = new double[staffCount];
+            double[] bottom = new double[staffCount];
+            Array.Fill(top, 0.5);
+            Array.Fill(bottom, 0.5);
+            foreach (DrawingPrimitive primitive in drawn)
+            {
+                // Staff lines, headers and barlines belong to the staves themselves.
+                if (primitive.ElementId.Value == Guid.Empty || primitive is DisplayLists.Path)
+                {
+                    continue;
+                }
+
+                if (!scratch.StaffByPrimitive.TryGetValue(primitive, out int nearest))
+                {
+                    continue;
+                }
+
+                top[nearest] = Math.Max(top[nearest], placement.StaffTops[nearest] - primitive.Bounds.Y);
+                bottom[nearest] = Math.Max(bottom[nearest], primitive.Bounds.Y + primitive.Bounds.Height - (placement.StaffTops[nearest] + 4));
+            }
+
+            extents[systemIndex] = [.. Enumerable.Range(0, staffCount).Select(i => new StaffSkyline(top[i], bottom[i]))];
         }
 
-        VerticalSystem verticalSystem = new(staves.MoveToImmutable(),
-            MinimumStaffGap: 1.5,
-            SkylineClearance: 1,
-            LeadingSpace: 1,
-            TrailingSpace: 1);
+        return extents;
+    }
+
+    private static VerticalLayoutResult BuildVerticalLayout(ImmutableArray<SystemLine> systems,
+        int staffCount, double pageHeight, double pageMargin, StaffSkyline[][]? extents)
+    {
         VerticalSystem[] verticalSystems = new VerticalSystem[systems.Length];
-        Array.Fill(verticalSystems, verticalSystem);
+        for (int systemIndex = 0; systemIndex < systems.Length; systemIndex++)
+        {
+            ImmutableArray<StaffSkyline>.Builder staves = ImmutableArray.CreateBuilder<StaffSkyline>(staffCount);
+            for (int index = 0; index < staffCount; index++)
+            {
+                staves.Add(extents is null ? new StaffSkyline(0.5, 0.5) : extents[systemIndex][index]);
+            }
+
+            verticalSystems[systemIndex] = new VerticalSystem(staves.MoveToImmutable(),
+                MinimumStaffGap: 1.5,
+                SkylineClearance: 1,
+                LeadingSpace: 1,
+                TrailingSpace: 1);
+        }
+
         return new VerticalPageLayouter().Layout(verticalSystems, pageHeight,
             pageMargin, pageMargin, systemGap: 2);
     }

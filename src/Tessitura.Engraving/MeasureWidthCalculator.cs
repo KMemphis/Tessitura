@@ -143,6 +143,20 @@ public sealed class MeasureWidthCalculator
                 }
             }
 
+            // Behind Bars, Chords > Seconds: a chord with notes a step apart puts one head beside the stem on either
+            // side, so reserve a head width on both sides.
+            int[] diatonic = [.. chord.Notes.Select(n => n.Pitch.Octave * 7 + (int)n.Pitch.Step).Order()];
+            for (int i = 1; i < diatonic.Length; i++)
+            {
+                if (diatonic[i] - diatonic[i - 1] == 1)
+                {
+                    double headWidth = notehead.NorthEast.X - notehead.SouthWest.X;
+                    leftExtent += headWidth;
+                    rightExtent += headWidth;
+                    break;
+                }
+            }
+
             if (musicEvent.Duration.Dots > 0)
             {
                 // Behind Bars, Dots > Placing dots: allow a style-controlled gap before each dot.
