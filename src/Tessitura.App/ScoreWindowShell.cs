@@ -446,11 +446,36 @@ public sealed class ScoreWindowShell : UserControl, IDisposable
         return row;
     }
 
+    /// <summary>Shows one mixer strip per instrument (up to nine) in the lower panel; each control runs a registered action.</summary>
+    /// <param name="instrumentNames">The instrument names in score order.</param>
+    public void BuildMixerStrips(IReadOnlyList<string> instrumentNames)
+    {
+        ArgumentNullException.ThrowIfNull(instrumentNames);
+        StackPanel stack = (StackPanel)BottomPanel.Child!;
+        while (stack.Children.Count > 1)
+        {
+            stack.Children.RemoveAt(1);
+        }
+
+        for (int i = 0; i < Math.Min(instrumentNames.Count, 9); i++)
+        {
+            StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(CreateLabel(instrumentNames[i], 13));
+            row.Children.Add(CreateButton("Silencio", "Silenciar", $"mixer.mute.{i + 1}"));
+            row.Children.Add(CreateButton("Solo", "Solo", $"mixer.solo.{i + 1}"));
+            row.Children.Add(CreateButton("−", "Bajar volumen", $"mixer.volume-down.{i + 1}"));
+            row.Children.Add(CreateButton("+", "Subir volumen", $"mixer.volume-up.{i + 1}"));
+            stack.Children.Add(row);
+        }
+
+        ApplyTheme();
+    }
+
     private Border CreateBottomPanel()
     {
         StackPanel stack = new() { Margin = new Thickness(14), Spacing = 10 };
         stack.Children.Add(CreateLabel("Mezclador  ·  Teclado de piano", 15, FontWeight.SemiBold));
-        return new Border { Height = 170, Child = stack };
+        return new Border { MinHeight = 170, Child = stack };
     }
 
     private Border CreateStatusBar(out TextBlock status)

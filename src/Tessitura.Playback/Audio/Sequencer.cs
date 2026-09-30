@@ -22,6 +22,8 @@ public sealed class Sequencer : IAudioSource
     private long _position;
     private bool _playing;
 
+    private Mixer? _mixer;
+    private int _appliedMixerVersion = -1;
     private SequenceData? _pendingData;
     private long _pendingSeek = -1;
     private int _pendingTransport;
@@ -61,6 +63,14 @@ public sealed class Sequencer : IAudioSource
     {
         ArgumentNullException.ThrowIfNull(data);
         Volatile.Write(ref _pendingData, data);
+    }
+
+    /// <summary>Connects a mixer whose changes take effect at the next audio block.</summary>
+    /// <param name="mixer">The mixer.</param>
+    public void Attach(Mixer mixer)
+    {
+        ArgumentNullException.ThrowIfNull(mixer);
+        Volatile.Write(ref _mixer, mixer);
     }
 
     /// <summary>Starts or resumes playing.</summary>
@@ -142,6 +152,13 @@ public sealed class Sequencer : IAudioSource
 
     private void ApplyRequests()
     {
+        Mixer? mixer = Volatile.Read(ref _mixer);
+        if (mixer is not null && mixer.Version != _appliedMixerVersion)
+        {
+            _appliedMixerVersion = mixer.Version;
+            mixer.Apply(_synthesizer);
+        }
+
         SequenceData? data = Interlocked.Exchange(ref _pendingData, null);
         long seek = Interlocked.Exchange(ref _pendingSeek, -1);
         int transport = Interlocked.Exchange(ref _pendingTransport, NoRequest);

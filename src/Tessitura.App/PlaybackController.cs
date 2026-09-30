@@ -13,6 +13,7 @@ public sealed class PlaybackController : IDisposable
     private readonly Func<int, Synthesizer> _createSynthesizer;
     private readonly Func<IAudioOutput> _createOutput;
     private Sequencer? _sequencer;
+    private Mixer? _mixer;
     private IAudioOutput? _output;
     private TempoMap? _tempo;
     private int _sampleRate;
@@ -32,6 +33,9 @@ public sealed class PlaybackController : IDisposable
 
     private Score _lastScore;
 
+    /// <summary>Gets the mixer; its changes act while the score plays.</summary>
+    public Mixer Mixer => _mixer ??= new Mixer(_input.CurrentScore.Instruments.Length);
+
     /// <summary>Gets whether the score is playing.</summary>
     public bool IsPlaying => _sequencer?.IsPlaying == true;
 
@@ -40,11 +44,28 @@ public sealed class PlaybackController : IDisposable
 
     /// <summary>Defines the playback actions.</summary>
     /// <returns>The action definitions.</returns>
-    public ImmutableArray<ActionDefinition> CreateActions() =>
-    [
-        new("playback.toggle", "Reproducir o detener", "Space", Toggle),
-        new("playback.stop", "Detener y volver al inicio", "Ctrl+Space", StopAndRewind),
-    ];
+    public ImmutableArray<ActionDefinition> CreateActions()
+    {
+        ImmutableArray<ActionDefinition>.Builder actions = ImmutableArray.CreateBuilder<ActionDefinition>();
+        actions.Add(new("playback.toggle", "Reproducir o detener", "Space", Toggle));
+        actions.Add(new("playback.stop", "Detener y volver al inicio", "Ctrl+Space", StopAndRewind));
+        int count = _input.CurrentScore.Instruments.Length;
+        for (int i = 0; i < Math.Min(count, 9); i++)
+        {
+            int instrument = i;
+            string name = _input.CurrentScore.Instruments[i].Name;
+            actions.Add(new($"mixer.mute.{i + 1}", $"Silenciar {name}", $"Alt+Shift+{i + 1}",
+                () => Mixer.SetMute(instrument, !Mixer.IsMuted(instrument))));
+            actions.Add(new($"mixer.solo.{i + 1}", $"Solo {name}", $"Ctrl+Shift+{i + 1}",
+                () => Mixer.SetSolo(instrument, !Mixer.IsSoloed(instrument))));
+            actions.Add(new($"mixer.volume-up.{i + 1}", $"Subir volumen de {name}", $"Alt+Ctrl+{i + 1}",
+                () => Mixer.SetVolume(instrument, Mixer.GetVolume(instrument) + 0.1f)));
+            actions.Add(new($"mixer.volume-down.{i + 1}", $"Bajar volumen de {name}", $"Alt+Ctrl+Shift+{i + 1}",
+                () => Mixer.SetVolume(instrument, Mixer.GetVolume(instrument) - 0.1f)));
+        }
+
+        return actions.ToImmutable();
+    }
 
     /// <summary>Starts from the cursor, or stops when already playing.</summary>
     public void Toggle()
@@ -124,6 +145,7 @@ public sealed class PlaybackController : IDisposable
             _output = _createOutput();
             _sampleRate = _output.SampleRate;
             _sequencer = new Sequencer(_createSynthesizer(_sampleRate));
+            _sequencer.Attach(EnsureMixer());
         }
 
         if (_output is not null)
@@ -132,11 +154,21 @@ public sealed class PlaybackController : IDisposable
         }
     }
 
+    private Mixer EnsureMixer() => Mixer;
+
     private void Rebuild()
     {
         Interpretation interpretation = Interpreter.Interpret(_input.CurrentScore);
         _tempo = interpretation.Tempo;
-        _sequencer!.Load(SequenceData.Build(interpretation, _sampleRate));
+        if (Mixer.InstrumentCount != _input.CurrentScore.Instruments.Length)
+        {
+            _mixer = new Mixer(_input.CurrentScore.Instruments.Length);
+            _sequencer!.Attach(_mixer);
+        }
+
+        // Each instrument gets the General MIDI program that matches its name.
+        int[] programs = [.. _input.CurrentScore.Instruments.Select(i => GeneralMidiPrograms.FromName(i.Name))];
+        _sequencer!.Load(SequenceData.Build(interpretation, _sampleRate, programs));
         _lastScore = _input.CurrentScore;
     }
 

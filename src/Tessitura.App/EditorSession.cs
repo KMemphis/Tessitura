@@ -72,6 +72,7 @@ internal sealed class EditorSession : IDisposable
         ActionRegistry actions = ActionRegistry.LoadOrCreate(definitions, settingsPath);
         _canvas.AttachActionRegistry(actions);
         Shell.AttachActionRegistry(actions);
+        Shell.BuildMixerStrips([.. score.Instruments.Select(i => i.Name)]);
         Directory.CreateDirectory(recoveryDirectory);
         string recoveryBase = path ?? Path.Combine(recoveryDirectory, $"untitled-{Guid.NewGuid():N}.tess");
         _autosave = new RecoveryAutosave(recoveryBase, () => (_input.CurrentScore, _style));
