@@ -208,9 +208,9 @@ public sealed class ScorePageComposer
                 score.Measures[pageSystem.Range.StartIndex].TimeSignature, _style);
             AddHeader(primitives, staffHeader, leftMargin, staffTop, staffClef,
                 score.Measures[pageSystem.Range.StartIndex].KeySignature);
-            AddBarline(primitives, staffLineId,
-                musicStartX - _style.MinimumRhythmicGap, staffTop,
-                _style.StaffLineThickness);
+            AddMeasureBoundary(primitives, score, staffLineId,
+                pageSystem.Range.StartIndex, musicStartX - _style.MinimumRhythmicGap,
+                staffTop, _style.StaffLineThickness);
 
             double measureStartX = musicStartX;
             for (int localMeasure = 0; localMeasure < pageSystem.Range.Count; localMeasure++)
@@ -227,7 +227,8 @@ public sealed class ScorePageComposer
                 }
 
                 measureStartX += measureWidth;
-                AddBarline(primitives, staffLineId, measureStartX, staffTop,
+                AddMeasureBoundary(primitives, score, staffLineId,
+                    scoreMeasureIndex + 1, measureStartX, staffTop,
                     _style.StaffLineThickness);
             }
 
@@ -240,6 +241,116 @@ public sealed class ScorePageComposer
         AddLines(primitives, score, state, musicStartX, musicEndX);
         ResolveAnnotations(primitives, state, systemFirstPrimitive);
         AddSlurs(primitives, score, state, systemFirstPrimitive, musicStartX, musicEndX);
+        DrawRepeatAnnotations(primitives, score, pageSystem, placement,
+            measureWidths, musicStartX, staffCount);
+    }
+
+    private void DrawRepeatAnnotations(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        Score score, SystemLine system, SystemVerticalPlacement placement,
+        ImmutableArray<double> measureWidths, double musicStartX, int staffCount)
+    {
+        if (staffCount == 0)
+        {
+            return;
+        }
+
+        double staffTop = placement.StaffTops[0];
+        double x = musicStartX;
+        for (int local = 0; local < system.Range.Count;)
+        {
+            int measureIndex = system.Range.StartIndex + local;
+            RepeatInfo? repeat = score.Measures[measureIndex].Repeat;
+            double measureEnd = x + measureWidths[local];
+            if (repeat is not null)
+            {
+                if (repeat.Target is RepeatTarget.Segno or RepeatTarget.Coda)
+                {
+                    string glyph = repeat.Target == RepeatTarget.Segno ? "segno" : "coda";
+                    AddGlyph(primitives, new ElementId(Guid.Empty), glyph,
+                        x + 0.2, staffTop - 0.4);
+                }
+
+                string jumpLabel = RepeatJumpLabel(repeat.Jump);
+                if (jumpLabel.Length > 0)
+                {
+                    AddText(primitives, new ElementId(Guid.Empty), jumpLabel,
+                        Math.Max(x + 0.2, measureEnd - jumpLabel.Length * 1.2), staffTop - 0.4, 1.8);
+                }
+            }
+
+            if (repeat is not null && !repeat.Endings.IsEmpty)
+            {
+                ImmutableArray<int> endingNumbers = repeat.Endings;
+                int groupEnd = local + 1;
+                double groupEndX = measureEnd;
+                while (groupEnd < system.Range.Count)
+                {
+                    RepeatInfo? next = score.Measures[system.Range.StartIndex + groupEnd].Repeat;
+                    if (next is null || !next.Endings.AsSpan().SequenceEqual(endingNumbers.AsSpan()))
+                    {
+                        break;
+                    }
+
+                    groupEndX += measureWidths[groupEnd];
+                    groupEnd++;
+                }
+
+                // SMuFL engravingDefaults.repeatEndingLineThickness sets the volta-bracket stroke.
+                double bracketThickness = _metadata.GetEngravingDefault("repeatEndingLineThickness");
+                double bracketY = staffTop - 1.1;
+                AddLine(primitives, new ElementId(Guid.Empty), x, bracketY,
+                    groupEndX, bracketY, bracketThickness);
+                AddLine(primitives, new ElementId(Guid.Empty), x, bracketY,
+                    x, staffTop - 0.25, bracketThickness);
+                AddLine(primitives, new ElementId(Guid.Empty), groupEndX, bracketY,
+                    groupEndX, staffTop - 0.25, bracketThickness);
+                System.Text.StringBuilder labelBuilder = new();
+                for (int endingIndex = 0; endingIndex < endingNumbers.Length; endingIndex++)
+                {
+                    if (endingIndex > 0)
+                    {
+                        labelBuilder.Append(", ");
+                    }
+
+                    labelBuilder.Append(endingNumbers[endingIndex]);
+                    labelBuilder.Append('.');
+                }
+
+                string label = labelBuilder.ToString();
+                AddText(primitives, new ElementId(Guid.Empty), label,
+                    x + 0.2, staffTop - 1.25, 1.8);
+                x = groupEndX;
+                local = groupEnd;
+                continue;
+            }
+
+            x = measureEnd;
+            local++;
+        }
+    }
+
+    private static string RepeatJumpLabel(RepeatJump jump) => jump switch
+    {
+        RepeatJump.DaCapo => "D.C.",
+        RepeatJump.DaCapoAlFine => "D.C. al Fine",
+        RepeatJump.DaCapoAlCoda => "D.C. al Coda",
+        RepeatJump.DalSegno => "D.S.",
+        RepeatJump.DalSegnoAlFine => "D.S. al Fine",
+        RepeatJump.DalSegnoAlCoda => "D.S. al Coda",
+        RepeatJump.ToCoda => "To Coda",
+        RepeatJump.Fine => "Fine",
+        _ => string.Empty,
+    };
+
+    private static void AddLine(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        ElementId id, double startX, double startY, double endX, double endY, double thickness)
+    {
+        DisplayBox bounds = new(Math.Min(startX, endX) - thickness / 2,
+            Math.Min(startY, endY) - thickness / 2,
+            Math.Abs(endX - startX) + thickness,
+            Math.Abs(endY - startY) + thickness);
+        primitives.Add(new DisplayLine(id, bounds, new DisplayPoint(startX, startY),
+            new DisplayPoint(endX, endY), thickness));
     }
 
     private SystemHeaderLayout BuildSystemHeader(Score score, int measureIndex, int staffCount)
@@ -1166,6 +1277,31 @@ public sealed class ScorePageComposer
         primitives.Add(new DisplayLine(new ElementId(id.Value),
             new DisplayBox(x - thickness / 2, top, thickness, bottom - top),
             new DisplayPoint(x, top), new DisplayPoint(x, bottom), thickness));
+    }
+
+    private void AddMeasureBoundary(ImmutableArray<DrawingPrimitive>.Builder primitives,
+        Score score, EventId id, int boundaryIndex, double x, double staffTop, double thickness)
+    {
+        bool leftRepeat = boundaryIndex < score.Measures.Length &&
+            score.Measures[boundaryIndex].Repeat?.StartRepeat == true;
+        bool rightRepeat = boundaryIndex > 0 &&
+            score.Measures[boundaryIndex - 1].Repeat?.EndRepeat is not null;
+        if (!leftRepeat && !rightRepeat)
+        {
+            AddBarline(primitives, id, x, staffTop, thickness);
+            return;
+        }
+
+        // SMuFL repeat glyphs span the four-line staff and take their origin on the bottom line.
+        // See SMuFL tables > Repeats and barlines.
+        string glyph = (leftRepeat, rightRepeat) switch
+        {
+            (true, true) => "repeatRightLeft",
+            (true, false) => "repeatLeft",
+            (false, true) => "repeatRight",
+            _ => throw new InvalidOperationException("A repeat boundary needs at least one repeat side."),
+        };
+        AddGlyph(primitives, new ElementId(id.Value), glyph, x, staffTop + StaffHeightSpaces);
     }
 
     private static int CountStaves(Score score)

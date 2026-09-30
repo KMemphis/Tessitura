@@ -54,6 +54,17 @@ public sealed class ScoreModelTests
         Assert.True(ScoreValidator.IsMeasureValid(score.Measures[0], score.Content[new StaffMeasureKey(0, 0)]));
     }
 
+    [Fact]
+    public void RepeatInfoRejectsInvalidPassCountsEndingsAndNavigationMarks()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RepeatInfo(EndRepeat: 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RepeatInfo(Endings: [0]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RepeatInfo(Endings: [1, 1]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RepeatInfo(Target: (RepeatTarget)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RepeatInfo(Jump: (RepeatJump)99));
+        Assert.Empty(new RepeatInfo().Endings);
+    }
+
     private static StaffMeasure WithQuarterNotes(int count)
     {
         ImmutableArray<MusicEvent>.Builder events = ImmutableArray.CreateBuilder<MusicEvent>();

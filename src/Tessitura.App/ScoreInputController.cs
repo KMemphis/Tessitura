@@ -203,7 +203,106 @@ public sealed class ScoreInputController
         actions.Add(new ActionDefinition("score.tie.toggle", "Alternar ligadura de unión", "T", ToggleTie));
         actions.Add(new ActionDefinition("score.undo", "Deshacer", "Ctrl+Z", Undo));
         actions.Add(new ActionDefinition("score.redo", "Rehacer", "Ctrl+Y", Redo));
+        actions.Add(new ActionDefinition("repeat.start.toggle", "Alternar inicio de repetición", "Ctrl+Alt+Shift+F1",
+            () => ToggleRepeatStart()));
+        actions.Add(new ActionDefinition("repeat.end.toggle", "Alternar fin de repetición a dos pasadas", "Ctrl+Alt+Shift+F2",
+            () => ToggleRepeatEnd()));
+        actions.Add(new ActionDefinition("repeat.ending.1.toggle", "Alternar casilla de primera pasada", "Ctrl+Alt+Shift+F3",
+            () => ToggleEnding(1)));
+        actions.Add(new ActionDefinition("repeat.ending.2.toggle", "Alternar casilla de segunda pasada", "Ctrl+Alt+Shift+F4",
+            () => ToggleEnding(2)));
+        actions.Add(new ActionDefinition("repeat.target.segno", "Marcar segno", "Ctrl+Alt+Shift+F5",
+            () => SetRepeatTarget(RepeatTarget.Segno)));
+        actions.Add(new ActionDefinition("repeat.target.coda", "Marcar coda", "Ctrl+Alt+Shift+F6",
+            () => SetRepeatTarget(RepeatTarget.Coda)));
+        actions.Add(new ActionDefinition("repeat.jump.dc", "Marcar D.C.", "Ctrl+Alt+Shift+F7",
+            () => SetRepeatJump(RepeatJump.DaCapo)));
+        actions.Add(new ActionDefinition("repeat.jump.dc-fine", "Marcar D.C. al Fine", "Ctrl+Alt+Shift+F8",
+            () => SetRepeatJump(RepeatJump.DaCapoAlFine)));
+        actions.Add(new ActionDefinition("repeat.jump.dc-coda", "Marcar D.C. al Coda", "Ctrl+Alt+Shift+F9",
+            () => SetRepeatJump(RepeatJump.DaCapoAlCoda)));
+        actions.Add(new ActionDefinition("repeat.jump.ds", "Marcar D.S.", "Ctrl+Alt+Shift+F10",
+            () => SetRepeatJump(RepeatJump.DalSegno)));
+        actions.Add(new ActionDefinition("repeat.jump.ds-fine", "Marcar D.S. al Fine", "Ctrl+Alt+Shift+F11",
+            () => SetRepeatJump(RepeatJump.DalSegnoAlFine)));
+        actions.Add(new ActionDefinition("repeat.jump.ds-coda", "Marcar D.S. al Coda", "Ctrl+Alt+Shift+F12",
+            () => SetRepeatJump(RepeatJump.DalSegnoAlCoda)));
+        actions.Add(new ActionDefinition("repeat.jump.to-coda", "Marcar To Coda", "Ctrl+Alt+Shift+Home",
+            () => SetRepeatJump(RepeatJump.ToCoda)));
+        actions.Add(new ActionDefinition("repeat.jump.fine", "Marcar Fine", "Ctrl+Alt+Shift+End",
+            () => SetRepeatJump(RepeatJump.Fine)));
         return actions.ToImmutable();
+    }
+
+    /// <summary>Toggles the start-repeat marking on the selected or cursor measure.</summary>
+    public bool ToggleRepeatStart() => UpdateMeasureRepeat(repeat => CreateRepeatInfo(repeat,
+        startRepeat: !(repeat?.StartRepeat ?? false)));
+
+    /// <summary>Toggles a two-pass end-repeat marking on the selected or cursor measure.</summary>
+    public bool ToggleRepeatEnd() => UpdateMeasureRepeat(repeat => CreateRepeatInfo(repeat,
+        replaceEndRepeat: true, endRepeat: repeat?.EndRepeat is null ? 2 : null));
+
+    /// <summary>Toggles an alternative-ending pass number on the selected or cursor measure.</summary>
+    /// <param name="ending">The one-based repeat pass represented by the ending.</param>
+    /// <returns>Whether a valid measure was updated.</returns>
+    public bool ToggleEnding(int ending)
+    {
+        if (ending < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ending));
+        }
+
+        return UpdateMeasureRepeat(repeat =>
+        {
+            ImmutableArray<int> current = repeat?.Endings ?? ImmutableArray<int>.Empty;
+            ImmutableArray<int>.Builder endings = ImmutableArray.CreateBuilder<int>(current.Length + 1);
+            bool removed = false;
+            foreach (int value in current)
+            {
+                if (value == ending && !removed)
+                {
+                    removed = true;
+                }
+                else
+                {
+                    endings.Add(value);
+                }
+            }
+
+            if (!removed)
+            {
+                endings.Add(ending);
+            }
+
+            return CreateRepeatInfo(repeat, endings: endings.ToImmutable());
+        });
+    }
+
+    /// <summary>Toggles a Segno or Coda target on the selected or cursor measure.</summary>
+    /// <param name="target">The navigation target to set.</param>
+    /// <returns>Whether a valid measure was updated.</returns>
+    public bool SetRepeatTarget(RepeatTarget target)
+    {
+        if (target is not (RepeatTarget.Segno or RepeatTarget.Coda))
+        {
+            throw new ArgumentOutOfRangeException(nameof(target));
+        }
+
+        return UpdateMeasureRepeat(repeat => CreateRepeatInfo(repeat,
+            target: repeat?.Target == target ? RepeatTarget.None : target));
+    }
+
+    /// <summary>Sets the navigation instruction on the selected or cursor measure.</summary>
+    /// <param name="jump">The instruction to set, or <see cref="RepeatJump.None"/> to clear it.</param>
+    /// <returns>Whether a valid measure was updated.</returns>
+    public bool SetRepeatJump(RepeatJump jump)
+    {
+        if (!Enum.IsDefined(jump))
+        {
+            throw new ArgumentOutOfRangeException(nameof(jump));
+        }
+
+        return UpdateMeasureRepeat(repeat => CreateRepeatInfo(repeat, jump: jump));
     }
 
     /// <summary>Enters keyboard note-entry mode.</summary>
@@ -969,6 +1068,66 @@ public sealed class ScoreInputController
         Apply(createCommand(selected), location.Context, CurrentSelection);
         NotifyStateChanged();
         return true;
+    }
+
+    private bool UpdateMeasureRepeat(Func<RepeatInfo?, RepeatInfo?> createRepeat)
+    {
+        EditContext context;
+        if (!CurrentSelection.Items.IsDefaultOrEmpty)
+        {
+            context = FindEventLocation(CurrentSelection.Items[0].EventId).Context;
+        }
+        else
+        {
+            context = new EditContext(Cursor.StaffIndex, MeasureAtCursor(), Cursor.VoiceNumber);
+        }
+
+        RepeatInfo? current = CurrentScore.Measures[context.MeasureIndex].Repeat;
+        RepeatInfo? changed = createRepeat(current);
+        if (Equals(current, changed))
+        {
+            return false;
+        }
+
+        Apply(new SetMeasureRepeatCommand(changed), context, CurrentSelection);
+        NotifyStateChanged();
+        return true;
+    }
+
+    private int MeasureAtCursor()
+    {
+        Fraction measureStart = Fraction.Zero;
+        for (int index = 0; index < CurrentScore.Measures.Length; index++)
+        {
+            Fraction measureEnd = measureStart + CurrentScore.Measures[index].TimeSignature.Length;
+            if (Cursor.Position < measureEnd || index == CurrentScore.Measures.Length - 1)
+            {
+                return index;
+            }
+
+            measureStart = measureEnd;
+        }
+
+        return CurrentScore.Measures.Length - 1;
+    }
+
+    private static RepeatInfo? CreateRepeatInfo(RepeatInfo? source,
+        bool? startRepeat = null,
+        bool replaceEndRepeat = false,
+        int? endRepeat = null,
+        ImmutableArray<int>? endings = null,
+        RepeatTarget? target = null,
+        RepeatJump? jump = null)
+    {
+        bool start = startRepeat ?? source?.StartRepeat ?? false;
+        int? end = replaceEndRepeat ? endRepeat : source?.EndRepeat;
+        ImmutableArray<int> endingPasses = endings ?? source?.Endings ?? ImmutableArray<int>.Empty;
+        RepeatTarget repeatTarget = target ?? source?.Target ?? RepeatTarget.None;
+        RepeatJump repeatJump = jump ?? source?.Jump ?? RepeatJump.None;
+        return !start && end is null && endingPasses.IsEmpty &&
+            repeatTarget == RepeatTarget.None && repeatJump == RepeatJump.None
+            ? null
+            : new RepeatInfo(start, end, endingPasses, repeatTarget, repeatJump);
     }
 
     private void Apply(IScoreCommand command, EditContext context, Selection? selection = null)

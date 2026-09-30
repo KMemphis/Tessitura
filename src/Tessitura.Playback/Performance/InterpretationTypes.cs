@@ -54,7 +54,7 @@ public sealed record ArticulationMark(EventId Event, Articulation Kind);
 /// <param name="QuarterNotesPerMinute">The tempo in quarter notes per minute.</param>
 public sealed record TempoMark(Fraction Position, double QuarterNotesPerMinute);
 
-/// <summary>Carries the performance markings that the score model does not store yet (dynamics, articulations, tempo).</summary>
+/// <summary>Carries event-bound dynamics, articulations, and tempo marks for interpretation.</summary>
 /// <param name="Dynamics">The dynamic marks.</param>
 /// <param name="Articulations">The articulation marks.</param>
 /// <param name="Tempos">The tempo marks.</param>
@@ -66,9 +66,9 @@ public sealed record PerformanceHints(
     /// <summary>Gets hints with no markings.</summary>
     public static PerformanceHints Empty { get; } = new([], [], []);
 
-    /// <summary>Reads the dynamics and articulations attached to a score's events.</summary>
+    /// <summary>Reads performance marks attached to score events.</summary>
     /// <param name="score">The score.</param>
-    /// <returns>Hints for the interpreter; tempo marks come with F4.5.</returns>
+    /// <returns>The score's dynamics, articulations, and tempo marks.</returns>
     public static PerformanceHints FromScore(Score score)
     {
         ArgumentNullException.ThrowIfNull(score);

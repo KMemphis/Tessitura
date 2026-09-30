@@ -23,7 +23,12 @@ internal static class ScoreMapper
         foreach (Measure measure in score.Measures)
         {
             measures.Add(new MeasureDto(measure.Number, measure.TimeSignature.Numerator,
-                measure.TimeSignature.Denominator, measure.KeySignature.Fifths));
+                measure.TimeSignature.Denominator, measure.KeySignature.Fifths,
+                measure.Repeat is RepeatInfo repeat
+                    ? new RepeatDto(repeat.StartRepeat, repeat.EndRepeat,
+                        repeat.Endings.IsEmpty ? null : [.. repeat.Endings],
+                        (int)repeat.Target, (int)repeat.Jump)
+                    : null));
         }
 
         List<StaffMeasureKey> keys = [.. score.Content.Keys];
@@ -131,7 +136,12 @@ internal static class ScoreMapper
         {
             measures.Add(new Measure(measure.Number,
                 new TimeSignature(measure.Numerator, measure.Denominator),
-                new KeySignature(measure.Fifths)));
+                new KeySignature(measure.Fifths),
+                measure.Repeat is RepeatDto repeat
+                    ? new RepeatInfo(repeat.StartRepeat, repeat.EndRepeat,
+                        repeat.Endings is null ? ImmutableArray<int>.Empty : [.. repeat.Endings],
+                        (RepeatTarget)repeat.Target, (RepeatJump)repeat.Jump)
+                    : null));
         }
 
         ImmutableDictionary<StaffMeasureKey, StaffMeasure>.Builder content =

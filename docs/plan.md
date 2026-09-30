@@ -91,7 +91,7 @@ La reproducción básica que el alcance incluye en el MVP llega en F3; la versi�
 - [x] **F4.6 · Ligaduras de expresión.** Curvas Bézier que esquivan cabezas, plicas y articulaciones, incluso entre sistemas. *Hecho cuando:* imágenes de referencia de ligaduras largas, cortas y partidas.
 - [x] **F4.7 · Líneas.** Reguladores, octavas y pedal como spanners anclados a eventos. *Hecho cuando:* sobreviven a cortes de sistema y a ediciones de la música anclada.
 - [x] **F4.8 · Skylines completos.** Colocación de todos los elementos contra los perfiles y distribución vertical con ellos. *Hecho cuando:* ningún elemento se solapa en el catálogo de referencia.
-- [ ] **F4.9 · Repeticiones.** Barras de repetición, casillas, D.C., D.S. y coda, en grabado y en reproducción. *Hecho cuando:* la reproducción sigue el orden correcto en cinco estructuras de prueba.
+- [x] **F4.9 · Repeticiones.** Barras de repetición, casillas, D.C., D.S. y coda, en grabado y en reproducción. *Hecho cuando:* la reproducción sigue el orden correcto en cinco estructuras de prueba.
 - [ ] **F4.10 · Letras y cifrado.** Varias estrofas, guiones y extensores; cifrado de acordes. *Hecho cuando:* imágenes de referencia de un himno con tres estrofas.
 - [ ] **F4.11 · Partes vinculadas.** Extracción de partes como vistas con maquetación propia y compases de espera agrupados. *Hecho cuando:* editar una nota en la partitura la cambia en la parte.
 - [ ] **F4.12 · Transposición.** Partitura en concierto o transpuesta e instrumentos transpositores. *Hecho cuando:* un clarinete en Si bemol muestra la altura escrita correcta en ambas vistas.

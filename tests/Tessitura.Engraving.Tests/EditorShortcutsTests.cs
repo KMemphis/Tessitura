@@ -29,6 +29,16 @@ public sealed class EditorShortcutsTests
 
         Assert.Contains(all, a => a.Id == "file.save");
         Assert.Contains(all, a => a.Id == "midi.connect");
+        Assert.Contains(all, a => a.Id == "repeat.start.toggle");
+        Assert.Contains(all, a => a.Id == "repeat.end.toggle");
+        Assert.Contains(all, a => a.Id == "repeat.ending.1.toggle");
+        Assert.Contains(all, a => a.Id == "repeat.ending.2.toggle");
+        Assert.Contains(all, a => a.Id == "repeat.target.segno");
+        Assert.Contains(all, a => a.Id == "repeat.target.coda");
+        Assert.Contains(all, a => a.Id == "repeat.jump.dc");
+        Assert.Contains(all, a => a.Id == "repeat.jump.ds");
+        Assert.Contains(all, a => a.Id == "repeat.jump.to-coda");
+        Assert.Contains(all, a => a.Id == "repeat.jump.fine");
         string settings = Path.Combine(Path.GetTempPath(), $"tessitura-all-{Guid.NewGuid():N}.json");
         try
         {

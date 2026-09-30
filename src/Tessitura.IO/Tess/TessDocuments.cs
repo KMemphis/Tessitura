@@ -21,7 +21,11 @@ internal sealed record StaffDto(string Name, int Clef);
 
 internal sealed record InstrumentDto(string Name, List<StaffDto> Staves);
 
-internal sealed record MeasureDto(int Number, int Numerator, int Denominator, int Fifths);
+internal sealed record MeasureDto(int Number, int Numerator, int Denominator, int Fifths,
+    RepeatDto? Repeat = null);
+
+internal sealed record RepeatDto(bool StartRepeat = false, int? EndRepeat = null,
+    List<int>? Endings = null, int Target = 0, int Jump = 0);
 
 internal sealed record SpannerDto(Guid Start, Guid End, int Kind);
 

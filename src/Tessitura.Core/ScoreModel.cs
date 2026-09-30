@@ -116,14 +116,114 @@ public readonly record struct KeySignature
     }
 }
 
+/// <summary>Names a navigation landmark in the score for repeat playback.</summary>
+public enum RepeatTarget
+{
+    /// <summary>This measure is not a navigation landmark.</summary>
+    None,
+    /// <summary>This measure is the destination of a D.S. jump.</summary>
+    Segno,
+    /// <summary>This measure is the destination of a To Coda jump.</summary>
+    Coda,
+}
+
+/// <summary>Names a navigation instruction printed at the end of a measure.</summary>
+public enum RepeatJump
+{
+    /// <summary>No navigation instruction.</summary>
+    None,
+    /// <summary>Return to the first measure.</summary>
+    DaCapo,
+    /// <summary>Return to the first measure and stop at Fine.</summary>
+    DaCapoAlFine,
+    /// <summary>Return to the first measure and jump at To Coda.</summary>
+    DaCapoAlCoda,
+    /// <summary>Return to the Segno measure.</summary>
+    DalSegno,
+    /// <summary>Return to Segno and stop at Fine.</summary>
+    DalSegnoAlFine,
+    /// <summary>Return to Segno and jump at To Coda.</summary>
+    DalSegnoAlCoda,
+    /// <summary>Jump to the Coda measure when the coda is armed by D.C. or D.S.</summary>
+    ToCoda,
+    /// <summary>Stop playback when reached after an al Fine jump.</summary>
+    Fine,
+}
+
+/// <summary>Stores repeat barlines, alternative endings, and navigation marks for one measure.</summary>
+/// <param name="StartRepeat">Whether the measure begins a repeated section.</param>
+/// <param name="EndRepeat">The total number of passes when the section ends here, or null without an end repeat.</param>
+    /// <param name="Endings">The alternative-ending pass numbers to which this measure belongs.</param>
+    /// <param name="Target">The navigation target placed in this measure.</param>
+    /// <param name="Jump">The navigation instruction printed at the end of this measure.</param>
+public sealed record RepeatInfo(
+    bool StartRepeat = false,
+    int? EndRepeat = null,
+    ImmutableArray<int> Endings = default,
+    RepeatTarget Target = RepeatTarget.None,
+    RepeatJump Jump = RepeatJump.None)
+{
+    /// <summary>Gets the number of passes for an end repeat, or null when this measure has no end repeat.</summary>
+    public int? EndRepeat { get; init; } = ValidatePassCount(EndRepeat);
+
+    /// <summary>Gets the alternative-ending pass numbers for this measure.</summary>
+    public ImmutableArray<int> Endings { get; init; } = ValidateEndings(Endings);
+
+    /// <summary>Gets the navigation target placed in this measure.</summary>
+    public RepeatTarget Target { get; init; } = ValidateTarget(Target);
+
+    /// <summary>Gets the navigation instruction printed at the end of this measure.</summary>
+    public RepeatJump Jump { get; init; } = ValidateJump(Jump);
+
+    private static int? ValidatePassCount(int? passCount)
+    {
+        if (passCount is < 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(passCount), "An end repeat needs at least two passes.");
+        }
+
+        return passCount;
+    }
+
+    private static ImmutableArray<int> ValidateEndings(ImmutableArray<int> endings)
+    {
+        if (endings.IsDefaultOrEmpty)
+        {
+            return ImmutableArray<int>.Empty;
+        }
+
+        HashSet<int> seen = [];
+        foreach (int ending in endings)
+        {
+            if (ending < 1 || !seen.Add(ending))
+            {
+                throw new ArgumentOutOfRangeException(nameof(endings),
+                    "Alternative-ending pass numbers must be positive and unique.");
+            }
+        }
+
+        return endings;
+    }
+
+    private static RepeatTarget ValidateTarget(RepeatTarget target) => Enum.IsDefined(target)
+        ? target
+        : throw new ArgumentOutOfRangeException(nameof(target));
+
+    private static RepeatJump ValidateJump(RepeatJump jump) => Enum.IsDefined(jump)
+        ? jump
+        : throw new ArgumentOutOfRangeException(nameof(jump));
+}
+
 /// <summary>Describes one measure on the score's global timeline.</summary>
 /// <param name="Number">The displayed measure number.</param>
 /// <param name="TimeSignature">The measure's meter.</param>
 /// <param name="KeySignature">The key signature in effect in this measure.</param>
+/// <param name="Repeat">Optional repeat and navigation markings.</param>
 public sealed record Measure(
     int Number,
     TimeSignature TimeSignature,
-    KeySignature KeySignature = default);
+    KeySignature KeySignature = default,
+    RepeatInfo? Repeat = null);
 
 /// <summary>Locates one staff's content in one global measure.</summary>
 /// <param name="StaffIndex">The zero-based staff index.</param>
