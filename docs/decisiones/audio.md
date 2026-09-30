@@ -32,7 +32,7 @@ Equipo: MacBook Air arm64, macOS 27.0, altavoces integrados predeterminados; el 
 
 El tiempo de arranque API mide el retorno de `SourcePlay` o `Play`, **no la latencia hasta el altavoz**. El tiempo de primer callback de miniaudio tampoco incluye la cola del dispositivo ni el recorrido acústico. Estos valores no son directamente comparables y no demuestran aún el objetivo de 20 ms. La implementación OpenAL de la prueba carga una nota en un búfer estático; el flujo definitivo deberá usar una cola continua. La prueba miniaudio emplea su API estándar estática solo en este ejecutable experimental; la implementación del producto deberá encapsular la API avanzada en una instancia inyectable y evitar asignaciones en el callback.
 
-Windows y Linux se comprueban mediante compilación y prueba del sintetizador en la matriz de CI; los runners no aportan una salida física fiable. No se han medido allí ni reproducción audible ni latencia. El propietario dispone solo de este Mac.
+Windows y Linux se comprobaron mediante compilación y prueba del sintetizador en la [matriz de CI](https://github.com/KMemphis/Tessitura/actions/runs/36653006026), en verde en los tres sistemas; los runners no aportan una salida física fiable. No se han medido allí ni reproducción audible ni latencia. El propietario dispone solo de este Mac.
 
 ## Recomendación y decisión solicitada
 
