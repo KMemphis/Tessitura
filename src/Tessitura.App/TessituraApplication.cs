@@ -12,6 +12,14 @@ namespace Tessitura.App;
 public sealed class TessituraApplication : Application
 {
     /// <inheritdoc />
+    public override void Initialize()
+    {
+        ShellTheme.Install(this);
+        RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark;
+        base.Initialize();
+    }
+
+    /// <inheritdoc />
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -26,22 +34,15 @@ public sealed class TessituraApplication : Application
                 Path.Combine(assets, "Bravura.otf"),
                 postToUi: action => Dispatcher.UIThread.Post(action));
             updates.PresentationReady += (_, presentation) => canvas.AttachPresentation(presentation);
+            MainView view = new(scoreInput, canvas);
             string settingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "Tessitura",
                 "shortcuts.json");
-            List<ActionDefinition> actionDefinitions =
-            [
-                new ActionDefinition(
-                    "view.zoom-in", "Aumentar zoom", "Ctrl+Plus", () => canvas.ZoomBy(1.1)),
-                new ActionDefinition(
-                    "view.zoom-out", "Reducir zoom", "Ctrl+Minus", () => canvas.ZoomBy(1 / 1.1)),
-                new ActionDefinition(
-                    "view.fit-page", "Ajustar página", "Ctrl+0", canvas.FitPage),
-            ];
-            actionDefinitions.AddRange(scoreInput.CreateActions());
+            List<ActionDefinition> actionDefinitions = [.. view.CreateActions(), .. scoreInput.CreateActions()];
             ActionRegistry actions = ActionRegistry.LoadOrCreate(actionDefinitions, settingsPath);
             canvas.AttachActionRegistry(actions);
+            view.AttachActionRegistry(actions);
             desktop.Exit += (_, _) =>
             {
                 updates.Dispose();
@@ -49,12 +50,13 @@ public sealed class TessituraApplication : Application
             };
             Window mainWindow = new()
             {
-                Title = "Tessitura",
-                Width = 1000,
-                Height = 800,
-                MinWidth = 600,
-                MinHeight = 500,
-                Content = canvas,
+                Title = $"{scoreInput.CurrentScore.Metadata.Title} — Tessitura",
+                Width = 1440,
+                Height = 900,
+                MinWidth = 900,
+                MinHeight = 600,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Content = view,
             };
             mainWindow.Opened += (_, _) => canvas.Focus();
             desktop.MainWindow = mainWindow;

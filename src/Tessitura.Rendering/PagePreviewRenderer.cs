@@ -5,6 +5,9 @@ namespace Tessitura.Rendering;
 /// <summary>Draws the provisional A4 page preview before engraving is available.</summary>
 public static class PagePreviewRenderer
 {
+    /// <summary>Gets the default workspace color drawn around the page.</summary>
+    public static SKColor DefaultWorkspace { get; } = new(47, 52, 61);
+
     /// <summary>Draws the workspace, A4 page, and page shadow.</summary>
     public static void Draw(
         SKCanvas canvas,
@@ -13,9 +16,10 @@ public static class PagePreviewRenderer
         double zoom,
         double panX,
         double panY,
-        MusicPreviewRenderer? music = null)
+        MusicPreviewRenderer? music = null,
+        SKColor? workspace = null)
     {
-        using SKPaint background = new() { Color = new SKColor(47, 52, 61) };
+        using SKPaint background = new() { Color = workspace ?? DefaultWorkspace };
         using SKPaint shadow = new() { Color = new SKColor(0, 0, 0, 75), IsAntialias = true };
         using SKPaint page = new() { Color = SKColors.White, IsAntialias = true };
 

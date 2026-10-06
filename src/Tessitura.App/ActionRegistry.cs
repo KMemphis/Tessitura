@@ -138,6 +138,26 @@ public sealed class ActionRegistry
         return true;
     }
 
+    /// <summary>Gets the registered action with its effective shortcut.</summary>
+    /// <param name="actionId">The registered action identifier.</param>
+    /// <param name="action">The action, when it exists.</param>
+    /// <returns><see langword="true"/> when the action is registered.</returns>
+    public bool TryGetAction(string actionId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out RegisteredAction? action)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionId);
+        foreach (RegisteredAction candidate in Actions)
+        {
+            if (string.Equals(candidate.Id, actionId, StringComparison.Ordinal))
+            {
+                action = candidate;
+                return true;
+            }
+        }
+
+        action = null;
+        return false;
+    }
+
     private static void ValidateAction(ActionDefinition action)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(action.Id);

@@ -31,6 +31,10 @@ public sealed class ScoreCanvas : Control
     private double _displayPageStaffSpace = 12;
     private Point? _dragPointer;
     private bool _userAdjusted;
+    private Color _workspaceColor = Color.FromRgb(
+        PagePreviewRenderer.DefaultWorkspace.Red,
+        PagePreviewRenderer.DefaultWorkspace.Green,
+        PagePreviewRenderer.DefaultWorkspace.Blue);
 
     /// <summary>Creates a canvas that initially fits the page in its view.</summary>
     public ScoreCanvas(MusicPreviewRenderer? musicPreview = null)
@@ -54,6 +58,25 @@ public sealed class ScoreCanvas : Control
 
     /// <summary>Gets the page offset in view coordinates.</summary>
     public Vector PanOffset { get; private set; }
+
+    /// <summary>Gets or sets the color of the desk area around the paper.</summary>
+    public Color WorkspaceColor
+    {
+        get => _workspaceColor;
+        set
+        {
+            if (_workspaceColor == value)
+            {
+                return;
+            }
+
+            _workspaceColor = value;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Raised after the zoom factor or page offset changes.</summary>
+    public event EventHandler? ViewChanged;
 
     /// <summary>Gets or sets the musical input controller shown on this canvas.</summary>
     public ScoreInputController? ScoreInputController
@@ -100,6 +123,7 @@ public sealed class ScoreCanvas : Control
         _userAdjusted = true;
         UpdateCompositionVisual();
         InvalidateVisual();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Moves the page by a view-space distance.</summary>
@@ -109,6 +133,7 @@ public sealed class ScoreCanvas : Control
         _userAdjusted = true;
         UpdateCompositionVisual();
         InvalidateVisual();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Changes zoom around the center of the canvas.</summary>
@@ -215,7 +240,8 @@ public sealed class ScoreCanvas : Control
         _presentation?.MarkSceneBuilt();
         context.Custom(new PageDrawOperation(new Rect(Bounds.Size), Zoom, PanOffset,
             _compositionVisual is null ? _musicPreview : null,
-            _compositionVisual is null ? _presentation : null));
+            _compositionVisual is null ? _presentation : null,
+            new SKColor(_workspaceColor.R, _workspaceColor.G, _workspaceColor.B)));
         if (_pageSpatialIndex is not null && _scoreInputController is { CurrentSelection.Items.IsDefaultOrEmpty: false } selected)
         {
             context.Custom(new SelectionDrawOperation(
@@ -348,6 +374,7 @@ public sealed class ScoreCanvas : Control
             (Bounds.Height - 842 * Zoom) / 2 - 40 * Zoom);
         UpdateCompositionVisual();
         InvalidateVisual();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void UpdateCompositionVisual()
@@ -416,7 +443,8 @@ public sealed class ScoreCanvas : Control
         double zoom,
         Vector panOffset,
         MusicPreviewRenderer? musicPreview,
-        ScorePagePresentation? presentation) : ICustomDrawOperation
+        ScorePagePresentation? presentation,
+        SKColor workspace) : ICustomDrawOperation
     {
         private readonly IDisposable? _pictureReference = presentation?.RetainPicture();
         public Rect Bounds { get; } = bounds;
@@ -432,7 +460,7 @@ public sealed class ScoreCanvas : Control
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
             PagePreviewRenderer.Draw(canvas, Bounds.Width, Bounds.Height, zoom, panOffset.X,
-                panOffset.Y, presentation is null ? musicPreview : null);
+                panOffset.Y, presentation is null ? musicPreview : null, workspace);
             if (presentation is not null)
             {
                 canvas.Save();

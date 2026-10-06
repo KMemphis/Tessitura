@@ -83,6 +83,12 @@ public sealed class ScoreInputController
     /// <summary>Gets the duration used by the next note or rest action.</summary>
     public Duration CurrentDuration { get; private set; } = new(NoteValue.Quarter, 0);
 
+    /// <summary>Gets whether a previous score snapshot can be restored.</summary>
+    public bool CanUndo => _history.CanUndo;
+
+    /// <summary>Gets whether an undone score snapshot can be restored again.</summary>
+    public bool CanRedo => _history.CanRedo;
+
     /// <summary>Gets the pitch of the most recently entered note, if any.</summary>
     public Pitch? LastEnteredPitch => _lastPitch;
 
